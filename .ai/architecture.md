@@ -13,7 +13,7 @@ karotx (Go binary)
       └── drivers (one package each, behind a common interface)
 ```
 
-## Planned layout
+## Layout
 
 ```
 cmd/karotx/          main: flag parsing, startup
@@ -21,27 +21,32 @@ internal/server/     HTTP routes, auth, static file serving
 internal/state/      encrypted workspace file (.kxs) read/write (atomic)
 internal/auth/       UI password (set from the UI, stored in keychain) + sessions
 internal/secrets/    keychain wrapper (github.com/zalando/go-keyring)
-internal/conn/       connection manager + sessions
-internal/tunnel/     SSH tunnel
-internal/driver/     Driver interface + registry
-internal/driver/{postgres,mysql,sqlite,redis,mongo}/
+internal/model/      persisted connection config (no secrets)
+internal/conn/       connection manager: sessions, keychain secrets, cancellable queries
+internal/tunnel/     SSH tunnel (hops, auth methods, host-key pinning)
+internal/driver/     Driver interface, registry, SQL splitter/classifier
+internal/driver/sqldb/  database/sql core + postgres/mysql/sqlite dialects
+(later) internal/driver/{redis,mongo,...}/
 web/                 Vite + React + TS app; built to web/dist and embedded
 .ai/                 shared agent/human context
 ```
 
-## Driver contract (draft)
+## Driver contract
 
 Every driver implements a small core. Optional features are declared as **capabilities**, so the UI shows only what a driver supports.
 
 ```go
 type Driver interface {
-    Open(ctx, cfg ConnConfig) (Conn, error)
+    Open(ctx, OpenParams{Conn, Password, Dial}) (Conn, error)
 }
 type Conn interface {
     Ping(ctx) error
-    Tree(ctx, path []string) ([]Node, error)   // schema/keys/collections browser, lazy
-    Query(ctx, q Query) (*Result, error)       // run a statement / command
-    Capabilities() Caps                        // editGrid, sqlDialect, commander, ...
+    Info() Info
+    Ping(ctx) error
+    Tree(ctx, path []string) ([]Node, error)            // lazy schema browser
+    Query(ctx, sql string, maxRows int) ([]*Result, error) // one result per statement
+    Browse(ctx, BrowseRequest) (*Result, error)          // paged table rows + primary key
+    Apply(ctx, ApplyRequest, dryRun bool) ([]string, error) // grid edits in one transaction
     Close() error
 }
 ```

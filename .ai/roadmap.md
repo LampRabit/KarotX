@@ -2,14 +2,14 @@
 
 Phases 0–4 make up the MVP.
 
-### Phase 0 — Foundation
+### Phase 0 — Foundation ✅
 - Go module, CLI flags, embedded React app shell, `--no-open` / auto-open browser.
 - Encrypted state store + keychain secrets.
 - Optional password auth.
 - Theme token system (one default theme with light and dark, plus system mode).
 - App shell layout: connection sidebar, tab bar, main pane.
 
-### Phase 1 — Relational core
+### Phase 1 — Relational core ✅
 - Postgres (and Supabase/Neon/Cockroach presets), MySQL/MariaDB (and PlanetScale/TiDB presets), SQLite.
 - New-connection wizard with **Test connection**, TLS options, SSH tunnel (password, key + passphrase, agent, jump hosts).
 - Per-connection **production** flag: read-only by default, confirmation before destructive statements.

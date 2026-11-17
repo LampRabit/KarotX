@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/lamprabit/karotx/internal/auth"
+	"github.com/lamprabit/karotx/internal/conn"
 	"github.com/lamprabit/karotx/internal/server"
 	"github.com/lamprabit/karotx/internal/state"
 	"github.com/lamprabit/karotx/web"
@@ -56,6 +57,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	conns := conn.NewManager(store)
+	defer conns.Close()
 
 	addr := net.JoinHostPort(*host, strconv.Itoa(*port))
 	ln, err := net.Listen("tcp", addr)
@@ -66,7 +69,7 @@ func run() error {
 	srv := &http.Server{
 		Handler: server.New(server.Options{
 			Version: version, Addr: addr, Theme: *theme,
-			Store: store, Auth: authn, UI: web.Dist(),
+			Store: store, Auth: authn, Conns: conns, UI: web.Dist(),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

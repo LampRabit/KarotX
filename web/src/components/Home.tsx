@@ -1,6 +1,8 @@
-import { ArrowRight, KeyRound, Layers, RotateCcw, ShieldAlert } from 'lucide-react'
+import { ArrowRight, FileCode2, KeyRound, Layers, RotateCcw, ShieldAlert } from 'lucide-react'
 import { motion } from 'motion/react'
-import { databases, type DbKind } from '@/lib/databases'
+import { databases, kindOf, type DbKind } from '@/lib/databases'
+import { useWorkspace } from '@/lib/workspace'
+import { cn } from '@/lib/cn'
 import { BrandIcon } from './BrandIcon'
 import { Button } from './ui/Button'
 
@@ -55,17 +57,58 @@ const features = [
   { Icon: RotateCcw, title: 'Resume anytime', text: 'Connections and open tabs come back exactly as you left them.' },
 ]
 
+function YourConnections() {
+  const { connections, openConnection, openQuery } = useWorkspace()
+  if (connections.length === 0) return null
+  return (
+    <section className="space-y-3">
+      <h2 className="text-[13px] font-semibold text-muted-foreground">Your connections</h2>
+      <motion.ul variants={list} initial="hidden" animate="show" className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2.5">
+        {connections.map((c) => (
+          <motion.li key={c.id} variants={item} className="group relative">
+            <button
+              onClick={() => openConnection(c.id)}
+              className="flex w-full items-center gap-3 rounded-xl border bg-surface p-3 pr-12 text-left transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow)]"
+            >
+              <BrandIcon db={kindOf(c)} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate font-medium">{c.name}</span>
+                  {c.production && <span className="rounded bg-destructive/10 px-1 text-[10px] font-semibold text-destructive">PROD</span>}
+                </span>
+                <span className="flex items-center gap-1.5 truncate text-[13px] text-muted-foreground">
+                  <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', c.status === 'connected' ? 'bg-success' : c.status === 'error' ? 'bg-destructive' : 'bg-foreground/25')} />
+                  {c.status === 'connected' ? c.info?.serverVersion : c.driver === 'sqlite' ? c.file : c.host}
+                </span>
+              </span>
+            </button>
+            <button
+              onClick={() => openQuery(c.id)}
+              aria-label={`New query on ${c.name}`}
+              title="New query"
+              className="absolute top-1/2 right-3 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            >
+              <FileCode2 size={16} />
+            </button>
+          </motion.li>
+        ))}
+      </motion.ul>
+    </section>
+  )
+}
+
 export function Home({ protectedByPassword, onPick, onSetPassword }: Props) {
   const ready = databases.filter((d) => d.status === 'ready')
+  const hasConnections = useWorkspace((s) => s.connections.length > 0)
   return (
     <div className="relative min-h-full">
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(60%_100%_at_30%_0%,var(--glow),transparent)]" />
       <div className="relative mx-auto max-w-5xl space-y-10 px-8 py-12">
         <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}>
           <p className="text-[13px] font-medium text-primary">{greeting()}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">What would you like to connect today?</h1>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{hasConnections ? 'Pick up where you left off' : 'What would you like to connect today?'}</h1>
           <p className="mt-2 max-w-xl text-[15px] text-muted-foreground">
-            Pick a database to start. You can keep as many connections open as you like.
+            {hasConnections ? 'Open a connection, or add a new one below. Keep as many open as you like.' : 'Pick a database to start. You can keep as many connections open as you like.'}
           </p>
         </motion.header>
 
@@ -85,7 +128,8 @@ export function Home({ protectedByPassword, onPick, onSetPassword }: Props) {
           </motion.div>
         )}
 
-        <Section title="Databases" items={ready.filter((d) => d.group === 'database')} onPick={onPick} />
+        <YourConnections />
+        <Section title={hasConnections ? 'Add a database' : 'Databases'} items={ready.filter((d) => d.group === 'database')} onPick={onPick} />
         <Section title="Cloud services" items={ready.filter((d) => d.group === 'cloud')} onPick={onPick} />
         <Section title="Coming soon" items={databases.filter((d) => d.status === 'soon')} onPick={onPick} />
 

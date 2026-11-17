@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/lamprabit/karotx/internal/model"
 	"github.com/lamprabit/karotx/internal/secrets"
 )
 
@@ -37,10 +38,10 @@ const (
 // State is the persisted workspace. Secrets (passwords, keys) are never
 // stored here; they live in the OS keychain.
 type State struct {
-	Settings    Settings          `json:"settings"`
-	Connections []json.RawMessage `json:"connections"`
-	Tabs        []json.RawMessage `json:"tabs"`
-	ActiveTab   string            `json:"activeTab,omitempty"`
+	Settings    Settings           `json:"settings"`
+	Connections []model.Connection `json:"connections"`
+	Tabs        []json.RawMessage  `json:"tabs"`
+	ActiveTab   string             `json:"activeTab,omitempty"`
 }
 
 type Settings struct {
@@ -51,7 +52,7 @@ type Settings struct {
 func defaults() State {
 	return State{
 		Settings:    Settings{Theme: "karot", Mode: "system"},
-		Connections: []json.RawMessage{},
+		Connections: []model.Connection{},
 		Tabs:        []json.RawMessage{},
 	}
 }
@@ -183,13 +184,23 @@ func (s *Store) Get() State {
 	return s.state
 }
 
-// Update applies fn to the state and persists it. If saving fails the
-// in-memory state is rolled back.
+// Update applies fn to a copy of the state and persists it. The in-memory
+// state only changes if saving succeeds.
 func (s *Store) Update(fn func(*State)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	prev := s.state
-	fn(&s.state)
+	next := s.state
+	next.Connections = append([]model.Connection(nil), s.state.Connections...)
+	next.Tabs = append([]json.RawMessage(nil), s.state.Tabs...)
+	fn(&next)
+	if next.Connections == nil {
+		next.Connections = []model.Connection{}
+	}
+	if next.Tabs == nil {
+		next.Tabs = []json.RawMessage{}
+	}
+	s.state = next
 	if err := s.write(); err != nil {
 		s.state = prev
 		return err

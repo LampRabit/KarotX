@@ -3,7 +3,7 @@ import { motion, useAnimationControls } from 'motion/react'
 import { api } from '@/lib/api'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
-import { Logo } from './Logo'
+import { LogoMark, Wordmark } from './Logo'
 
 export function Login({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState('')
@@ -38,7 +38,7 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
       >
         <motion.form animate={shake} onSubmit={submit} className="space-y-6 rounded-2xl border bg-surface p-8 shadow-[var(--shadow)]">
           <div className="flex flex-col items-center gap-4 text-center">
-            <Logo size={48} />
+            <span className="flex flex-col items-center gap-1"><LogoMark size={64} /><Wordmark className="text-2xl" /></span>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Welcome back</h1>
               <p className="mt-1 text-muted-foreground">KarotX is locked. Enter your password to continue.</p>

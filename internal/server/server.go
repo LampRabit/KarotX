@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lamprabit/karotx/internal/auth"
+	"github.com/lamprabit/karotx/internal/conn"
 	"github.com/lamprabit/karotx/internal/state"
 )
 
@@ -22,6 +23,7 @@ type Options struct {
 	Theme   string // CLI override; empty = use state file
 	Store   *state.Store
 	Auth    *auth.Manager
+	Conns   *conn.Manager
 	UI      fs.FS
 }
 
@@ -38,6 +40,7 @@ func New(opt Options) http.Handler {
 	api.Handle("DELETE /api/password", s.authed(s.localOnly(s.removePassword)))
 	api.Handle("GET /api/state", s.authed(s.getState))
 	api.Handle("PATCH /api/settings", s.authed(s.patchSettings))
+	s.routeConnections(api)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api)

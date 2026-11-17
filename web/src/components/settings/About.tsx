@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import type { Session } from '@/lib/api'
-import { Logo } from '../Logo'
+import { LogoMark, Wordmark } from '../Logo'
 import { SectionHeader } from './SectionHeader'
 
 function Row({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
@@ -28,9 +28,9 @@ export function About({ session }: { session: Session }) {
     <div>
       <SectionHeader title="About" text="Details about this KarotX instance." />
       <div className="mb-6 flex items-center gap-3">
-        <Logo size={40} />
+        <LogoMark size={52} />
         <div>
-          <div className="font-semibold">KarotX</div>
+          <Wordmark className="text-2xl" />
           <div className="text-[13px] text-muted-foreground">by LampRabit</div>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useDelayed } from '@/lib/hooks'
 import { Button } from './ui/Button'
 import { Progress } from './ui/Progress'
-import { Logo } from './Logo'
+import { LogoMark, Wordmark } from './Logo'
 
 /** Startup screen: a loader while the workspace opens, or a clear error with retry. */
 export function Boot({ error, onRetry }: { error?: string; onRetry: () => void }) {
@@ -33,7 +33,7 @@ export function Boot({ error, onRetry }: { error?: string; onRetry: () => void }
         ) : (
           <>
             <motion.span animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}>
-              <Logo size={48} />
+              <span className="flex flex-col items-center gap-1"><LogoMark size={64} /><Wordmark className="text-2xl" /></span>
             </motion.span>
             <div className="w-full space-y-3">
               <p className="text-muted-foreground">Opening your workspace…</p>

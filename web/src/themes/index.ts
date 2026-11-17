@@ -4,7 +4,7 @@ export type Mode = 'system' | 'light' | 'dark'
 
 /** Registered themes. `swatch` drives the preview in Settings → Appearance. */
 export const themes = [
-  { id: 'karot', name: 'Karot', swatch: { light: ['#fdfbf8', '#c2410c'], dark: ['#1c1917', '#fb923c'] } },
+  { id: 'karot', name: 'Karot', swatch: { light: ['#fbfcfe', '#d2502a'], dark: ['#111a2a', '#ff8053'] } },
 ] as const
 
 export const prefersDark = () => matchMedia('(prefers-color-scheme: dark)').matches

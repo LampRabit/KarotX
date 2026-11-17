@@ -13,7 +13,7 @@ const modes = [
 function Preview({ bg, accent }: { bg: string; accent: string }) {
   const line = 'color-mix(in oklch, currentColor 18%, transparent)'
   return (
-    <span className="flex h-full flex-1 gap-1.5 p-2" style={{ background: bg, color: bg === '#1c1917' ? '#fff' : '#000' }}>
+    <span className="flex h-full flex-1 gap-1.5 p-2" style={{ background: bg, color: bg === '#111a2a' ? '#fff' : '#16243a' }}>
       <span className="w-1/4 space-y-1 rounded-sm p-1" style={{ background: line }}>
         <span className="block h-1.5 rounded-full" style={{ background: accent }} />
       </span>

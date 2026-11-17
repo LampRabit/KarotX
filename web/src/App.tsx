@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { Toaster, toast } from 'sonner'
+import { useWorkspace } from '@/lib/workspace'
+import { Workspace } from '@/components/Workspace'
+import { ConnectionDialog, type ConnectionDialogTarget } from '@/components/connections/ConnectionDialog'
 import { api, ApiError, type AppState, type Session } from '@/lib/api'
 import { track } from '@/lib/activity'
 import { useHotkey } from '@/lib/hooks'
@@ -28,6 +31,8 @@ export function App() {
   const [error, setError] = useState<string>()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [section, setSection] = useState<SettingsSection>('appearance')
+  const [dialog, setDialog] = useState<ConnectionDialogTarget>(null)
+  const connectionCount = useWorkspace((s) => s.connections.length)
 
   const load = useCallback(async () => {
     setError(undefined)
@@ -37,6 +42,9 @@ export function App() {
         const st = await api.state()
         applyTheme(st.settings.theme, st.settings.mode) // before first paint, avoids a color flash
         setState(st)
+        const ws = useWorkspace.getState()
+        ws.init(st.tabs, st.activeTab)
+        ws.refresh().catch(() => {})
       }
       setSession(s)
     } catch (err) {
@@ -80,11 +88,7 @@ export function App() {
     load()
   }
 
-  function pickDatabase(db?: DbKind) {
-    toast.info(db ? `${db.name} connections are coming next` : 'New connections are coming next', {
-      description: 'The connection wizard ships in the next build.',
-    })
-  }
+  const pickDatabase = (db?: DbKind) => setDialog({ kind: db })
 
   const dark = mode === 'dark' || (mode === 'system' && prefersDark())
 
@@ -101,14 +105,16 @@ export function App() {
             mode={mode}
             onModeChange={(m) => changeAppearance(theme, m)}
             onNewConnection={() => pickDatabase()}
+            onEditConnection={(c) => setDialog({ edit: c })}
             onOpenSettings={() => openSettings()}
             onLock={session.authRequired ? lock : undefined}
           />
-          <main className="min-w-0 flex-1 overflow-y-auto">
-            <Home protectedByPassword={session.authRequired} onPick={pickDatabase} onSetPassword={() => openSettings('security')} />
+          <main className="min-w-0 flex-1">
+            <Workspace home={<Home protectedByPassword={session.authRequired} onPick={pickDatabase} onSetPassword={() => openSettings('security')} />} />
           </main>
         </div>
-        <StatusBar session={session} connections={state.connections.length} onOpenSecurity={() => openSettings('security')} />
+        <StatusBar session={session} connections={connectionCount} onOpenSecurity={() => openSettings('security')} />
+        <ConnectionDialog target={dialog} onClose={() => setDialog(null)} />
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
