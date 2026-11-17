@@ -174,6 +174,7 @@ const shortcutGroups: { title: string; keys: [string, string][] }[] = [
     ['→ ←', 'Expand / collapse (or go to parent)'],
     ['Enter', 'Open table, or open a database'],
     ['Shift Enter', 'Open the connection’s database view'],
+    ['Double-click', 'Open a connection or database in a tab (or switch to it)'],
     ['Right-click', 'More actions'],
   ] },
   { title: 'Data grid', keys: [

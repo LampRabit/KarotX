@@ -171,7 +171,11 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
             role="treeitem"
             aria-expanded={node.hasChildren ? open : undefined}
             onClick={() => (isTable ? ws.openTable(conn.id, { schema: node.path[0], table: node.name }) : toggle())}
-            onDoubleClick={() => isContainer && ws.openDatabase(conn.id, node.name)}
+            onDoubleClick={() => {
+              if (!isContainer) return
+              ws.toggle(key, true) // the two single clicks toggled it; keep it open
+              ws.openDatabase(conn.id, node.name) // opens a tab, or focuses the existing one
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && isContainer) (e.preventDefault(), ws.openDatabase(conn.id, node.name))
               // For tables, → expands columns instead of opening the table.
@@ -244,6 +248,12 @@ function ConnectionItem({ conn, onEdit }: { conn: ConnView; onEdit: (c: ConnView
             role="treeitem"
             aria-expanded={open}
             onClick={expand}
+            onDoubleClick={() => {
+              // Double-click: open (or switch to) this connection's database tab, keeping the tree expanded.
+              openConnection(conn.id)
+              openDatabase(conn.id)
+            }}
+            title="Double-click to open the database"
             onKeyDown={(e) => e.key === 'Enter' && e.shiftKey && (e.preventDefault(), openDatabase(conn.id))}
             className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-1.5 text-left"
           >
