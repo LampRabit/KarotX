@@ -94,3 +94,30 @@ func (postgres) tree(ctx context.Context, db *sql.DB, path []string) ([]driver.N
 	}
 	return []driver.Node{}, nil
 }
+
+func (p postgres) useSchema(schema string) string {
+	return "SET search_path TO " + p.quote(schema) + ", public"
+}
+
+func (postgres) tables(ctx context.Context, db *sql.DB, schema string) ([]driver.TableInfo, error) {
+	return queryTables(ctx, db, `
+		SELECT c.relname, CASE WHEN c.relkind IN ('v','m') THEN 'view' ELSE 'table' END,
+		       CASE WHEN c.relkind = 'v' OR c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END,
+		       CASE WHEN c.relkind = 'v' THEN NULL ELSE pg_total_relation_size(c.oid) END
+		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = $1 AND c.relkind IN ('r','p','v','m','f') AND NOT c.relispartition
+		ORDER BY c.relname`, schema)
+}
+
+func (postgres) columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]driver.ColumnInfo, error) {
+	return queryColumns(ctx, db, `
+		SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
+		       pg_get_expr(d.adbin, d.adrelid),
+		       EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = a.attrelid AND i.indisprimary AND a.attnum = ANY(i.indkey)),
+		       a.attidentity <> '' OR COALESCE(pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%'
+		FROM pg_attribute a
+		JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+		LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+		WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
+		ORDER BY a.attnum`, t.Schema, t.Table)
+}

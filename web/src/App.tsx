@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Toaster, toast } from 'sonner'
+import { CommandPalette, ShortcutsDialog, useGlobalShortcuts } from '@/components/Palette'
+import { SchemaDialogs } from '@/components/schema/SchemaDialogs'
 import { useWorkspace } from '@/lib/workspace'
 import { Workspace } from '@/components/Workspace'
 import { ConnectionDialog, type ConnectionDialogTarget } from '@/components/connections/ConnectionDialog'
@@ -92,6 +94,16 @@ export function App() {
 
   const dark = mode === 'dark' || (mode === 'system' && prefersDark())
 
+  // Stable actions for the palette and global shortcuts; read the latest theme via a ref.
+  const latest = useRef({ theme, dark, changeAppearance })
+  latest.current = { theme, dark, changeAppearance }
+  const actions = useMemo(() => ({
+    newConnection: () => setDialog({}),
+    openSettings: () => openSettings(),
+    toggleMode: () => latest.current.changeAppearance(latest.current.theme, latest.current.dark ? 'light' : 'dark'),
+  }), [openSettings])
+  useGlobalShortcuts(actions)
+
   let content
   if (!session) content = <Boot error={error} onRetry={load} />
   else if (!session.authenticated) content = <Login onSuccess={load} />
@@ -115,6 +127,9 @@ export function App() {
         </div>
         <StatusBar session={session} connections={connectionCount} onOpenSecurity={() => openSettings('security')} />
         <ConnectionDialog target={dialog} onClose={() => setDialog(null)} />
+        <SchemaDialogs />
+        <CommandPalette actions={actions} />
+        <ShortcutsDialog />
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
@@ -133,7 +148,8 @@ export function App() {
     <TooltipProvider>
       <TopProgress />
       {content}
-      <Toaster position="bottom-right" offset={40} theme={dark ? 'dark' : 'light'} style={toastStyle} closeButton />
+      {/* Top-centre keeps toasts clear of the query box, save bar and dialog buttons. Alt+J focuses them (Alt+T is "new tab"). */}
+      <Toaster position="top-center" offset={14} hotkey={['altKey', 'KeyJ']} theme={dark ? 'dark' : 'light'} style={toastStyle} closeButton />
     </TooltipProvider>
   )
 }

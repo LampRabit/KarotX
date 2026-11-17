@@ -59,6 +59,10 @@ export type Result = {
   error?: string
 }
 export type TableRef = { schema: string; table: string }
+export type TableInfo = { name: string; kind: 'table' | 'view'; rows?: number; bytes?: number }
+export type ColumnInfo = { name: string; type: string; nullable: boolean; default: string | null; primaryKey: boolean; autoIncrement: boolean }
+export type FsEntry = { name: string; path: string; dir: boolean; size: number; modified: string }
+export type FsListing = { path: string; parent: string; home: string; roots: string[]; entries: FsEntry[] }
 export type Change = { kind: 'insert' | 'update' | 'delete'; key?: Record<string, Value>; values?: Record<string, Value> }
 
 export type HostKeyPrompt = { hop: number; host: string; fingerprint: string; changed: boolean }
@@ -122,8 +126,12 @@ export const api = {
   disconnect: (id: string) => request<void>('POST', `/connections/${id}/disconnect`),
   tree: (id: string, path: string[]) =>
     request<TreeNode[]>('GET', `/connections/${id}/tree?${path.map((p) => `path=${enc(p)}`).join('&')}`),
-  query: (id: string, sql: string, queryId: string, confirmed = false) =>
-    request<Result[]>('POST', `/connections/${id}/query`, { sql, queryId, confirmed, maxRows: 1000 }),
+  query: (id: string, sql: string, queryId: string, confirmed = false, schema?: string) =>
+    request<Result[]>('POST', `/connections/${id}/query`, { sql, queryId, confirmed, schema, maxRows: 1000 }),
+  tables: (id: string, schema: string) => request<TableInfo[]>('GET', `/connections/${id}/tables?schema=${enc(schema)}`),
+  columns: (id: string, ref: TableRef) =>
+    request<ColumnInfo[]>('GET', `/connections/${id}/columns?schema=${enc(ref.schema)}&table=${enc(ref.table)}`),
+  fs: (path: string) => request<FsListing>('GET', `/fs?path=${enc(path)}`),
   browse: (id: string, req: TableRef & { offset: number; limit: number; orderBy?: string; desc?: boolean; where?: string; queryId?: string }) =>
     request<Result>('POST', `/connections/${id}/browse`, req),
   apply: (id: string, ref: TableRef, changes: Change[], dryRun: boolean, confirmed = false) =>

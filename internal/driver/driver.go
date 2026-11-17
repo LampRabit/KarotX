@@ -30,7 +30,11 @@ type Conn interface {
 	// Tree lists children of the node at path (empty = root). Lazy by design.
 	Tree(ctx context.Context, path []string) ([]Node, error)
 	// Query runs one or more statements, returning a result per statement.
-	Query(ctx context.Context, sql string, maxRows int) ([]*Result, error)
+	Query(ctx context.Context, sql string, opt QueryOptions) ([]*Result, error)
+	// Tables lists tables/views in a schema with size estimates.
+	Tables(ctx context.Context, schema string) ([]TableInfo, error)
+	// Columns describes a table's columns (for the table designer).
+	Columns(ctx context.Context, t TableRef) ([]ColumnInfo, error)
 	Browse(ctx context.Context, r BrowseRequest) (*Result, error)
 	// Apply runs grid edits in one transaction. With dryRun it only returns the SQL.
 	Apply(ctx context.Context, r ApplyRequest, dryRun bool) ([]string, error)
@@ -50,6 +54,28 @@ type Node struct {
 	HasChildren bool     `json:"hasChildren"`
 	Detail      string   `json:"detail,omitempty"` // e.g. column type
 	PrimaryKey  bool     `json:"primaryKey,omitempty"`
+}
+
+type QueryOptions struct {
+	MaxRows int
+	// Schema scopes the run (MySQL: USE db; Postgres: search_path).
+	Schema string
+}
+
+type TableInfo struct {
+	Name  string `json:"name"`
+	Kind  string `json:"kind"`            // table | view
+	Rows  *int64 `json:"rows,omitempty"`  // estimate
+	Bytes *int64 `json:"bytes,omitempty"` // data + indexes
+}
+
+type ColumnInfo struct {
+	Name          string  `json:"name"`
+	Type          string  `json:"type"`
+	Nullable      bool    `json:"nullable"`
+	Default       *string `json:"default"`
+	PrimaryKey    bool    `json:"primaryKey"`
+	AutoIncrement bool    `json:"autoIncrement"`
 }
 
 type Column struct {

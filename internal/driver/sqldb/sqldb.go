@@ -5,6 +5,7 @@ package sqldb
 import (
 	"context"
 	"database/sql"
+	sqldriver "database/sql/driver"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -26,6 +27,10 @@ type dialect interface {
 	hashComments() bool
 	version(ctx context.Context, db *sql.DB) string
 	tree(ctx context.Context, db *sql.DB, path []string) ([]driver.Node, error)
+	tables(ctx context.Context, db *sql.DB, schema string) ([]driver.TableInfo, error)
+	columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]driver.ColumnInfo, error)
+	// useSchema returns the statement that scopes a session to schema ("" = unsupported).
+	useSchema(schema string) string
 }
 
 // Driver adapts a dialect to driver.Driver.
@@ -61,9 +66,14 @@ func (c *conn) Tree(ctx context.Context, path []string) ([]driver.Node, error) {
 	return c.d.tree(ctx, c.db, path)
 }
 
+// sessionKeywords change session state; a session that ran one is not
+// returned to the pool, so the state can't leak into other tabs.
+var sessionKeywords = map[string]bool{"USE": true, "SET": true, "RESET": true, "BEGIN": true, "START": true, "PRAGMA": true}
+
 // Query runs each statement in order on one session, so SET/BEGIN/temp
 // tables carry over between statements. It stops at the first error.
-func (c *conn) Query(ctx context.Context, src string, maxRows int) ([]*driver.Result, error) {
+func (c *conn) Query(ctx context.Context, src string, opt driver.QueryOptions) ([]*driver.Result, error) {
+	maxRows := opt.MaxRows
 	stmts := driver.SplitSQL(src, c.d.hashComments())
 	if len(stmts) == 0 {
 		return nil, errors.New("nothing to run")
@@ -72,7 +82,24 @@ func (c *conn) Query(ctx context.Context, src string, maxRows int) ([]*driver.Re
 	if err != nil {
 		return nil, err
 	}
-	defer sc.Close()
+	dirty := false
+	defer func() {
+		if dirty { // discard instead of returning a modified session to the pool
+			sc.Raw(func(any) error { return sqldriver.ErrBadConn })
+		}
+		sc.Close()
+	}()
+	for _, s := range stmts {
+		if sessionKeywords[driver.FirstKeyword(s)] || strings.Contains(strings.ToUpper(s), "TEMP") {
+			dirty = true
+		}
+	}
+	if use := c.d.useSchema(opt.Schema); opt.Schema != "" && use != "" {
+		if _, err := sc.ExecContext(ctx, use); err != nil {
+			return nil, err
+		}
+		dirty = true
+	}
 
 	var out []*driver.Result
 	for _, s := range stmts {
@@ -96,6 +123,14 @@ func (c *conn) Query(ctx context.Context, src string, maxRows int) ([]*driver.Re
 		}
 	}
 	return out, nil
+}
+
+func (c *conn) Tables(ctx context.Context, schema string) ([]driver.TableInfo, error) {
+	return c.d.tables(ctx, c.db, schema)
+}
+
+func (c *conn) Columns(ctx context.Context, t driver.TableRef) ([]driver.ColumnInfo, error) {
+	return c.d.columns(ctx, c.db, t)
 }
 
 func (c *conn) qualify(t driver.TableRef) string {
@@ -393,4 +428,49 @@ func queryNodes(ctx context.Context, db *sql.DB, parent []string, leaf bool, q s
 		nodes = append(nodes, n)
 	}
 	return nodes, rows.Err()
+}
+
+func queryTables(ctx context.Context, db *sql.DB, q string, args ...any) ([]driver.TableInfo, error) {
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []driver.TableInfo{}
+	for rows.Next() {
+		var t driver.TableInfo
+		var n, b sql.NullInt64
+		if err := rows.Scan(&t.Name, &t.Kind, &n, &b); err != nil {
+			return nil, err
+		}
+		if n.Valid {
+			t.Rows = &n.Int64
+		}
+		if b.Valid {
+			t.Bytes = &b.Int64
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func queryColumns(ctx context.Context, db *sql.DB, q string, args ...any) ([]driver.ColumnInfo, error) {
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []driver.ColumnInfo{}
+	for rows.Next() {
+		var c driver.ColumnInfo
+		var def sql.NullString
+		if err := rows.Scan(&c.Name, &c.Type, &c.Nullable, &def, &c.PrimaryKey, &c.AutoIncrement); err != nil {
+			return nil, err
+		}
+		if def.Valid {
+			c.Default = &def.String
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }

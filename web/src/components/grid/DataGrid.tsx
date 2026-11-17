@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowDown, ArrowUp, KeyRound } from 'lucide-react'
+import { ArrowDown, ArrowUp, Ban, Braces, Columns3, Copy, Filter, KeyRound, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Column, Value } from '@/lib/api'
 import { cn } from '@/lib/cn'
+import { modKey } from '@/lib/hooks'
+import { ContextMenu, CtxItem, CtxLabel, CtxSeparator } from '../ui/ContextMenu'
 
 export type RowState = 'new' | 'deleted' | undefined
 
@@ -20,6 +22,10 @@ type Props = {
   selected?: Set<number>
   onSelect?: (rows: Set<number>) => void
   rowOffset?: number // number shown in the gutter for row 0
+  /** Delete key on the grid (rows = selection, or the active row). */
+  onDeleteRows?: (rows: number[]) => void
+  /** Filter the table by a cell's value. */
+  onFilterBy?: (column: string, value: Value) => void
 }
 
 const ROW_H = 30
@@ -70,23 +76,50 @@ export function DataGrid(p: Props) {
     scrollRef.current?.focus()
   }
 
+  const copy = (text: string, what = 'value') => navigator.clipboard.writeText(text).then(() => toast.success(`Copied ${what}`, { duration: 1200 }))
+  const rowJson = (r: number) => JSON.stringify(Object.fromEntries(columns.map((col, i) => [col.name, rows[r][i]])), null, 2)
+  const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 600) / ROW_H) - 2)
+
   function onKey(e: KeyboardEvent) {
-    if (editing || !active) return
+    if (editing) return
+    if (!active) {
+      if (rows.length && e.key.startsWith('Arrow')) (e.preventDefault(), move(0, 0))
+      return
+    }
     const { r, c } = active
+    const mod = e.ctrlKey || e.metaKey
     const keys: Record<string, () => void> = {
-      ArrowDown: () => move(r + 1, c),
-      ArrowUp: () => move(r - 1, c),
-      ArrowRight: () => move(r, c + 1),
-      ArrowLeft: () => move(r, c - 1),
+      ArrowDown: () => move(mod ? rows.length - 1 : r + 1, c),
+      ArrowUp: () => move(mod ? 0 : r - 1, c),
+      ArrowRight: () => move(r, mod ? columns.length - 1 : c + 1),
+      ArrowLeft: () => move(r, mod ? 0 : c - 1),
+      Tab: () => move(r, e.shiftKey ? c - 1 : c + 1),
+      Home: () => move(mod ? 0 : r, 0),
+      End: () => move(mod ? rows.length - 1 : r, columns.length - 1),
+      PageDown: () => move(r + page, c),
+      PageUp: () => move(r - page, c),
       Enter: () => startEdit(r, c),
       F2: () => startEdit(r, c),
+      ' ': () => toggleRow(r, true),
+      Escape: () => (p.onSelect?.(new Set()), setActive(null)),
+      Delete: () => p.onDeleteRows?.(p.selected?.size ? [...p.selected] : [r]),
     }
-    if (keys[e.key]) {
+    if (keys[e.key] && !(e.key === 'Tab' && (c === 0 && e.shiftKey || c === columns.length - 1 && !e.shiftKey))) {
       e.preventDefault()
       keys[e.key]()
-    } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-      navigator.clipboard.writeText(display(rows[r][c])).then(() => toast.success('Copied value', { duration: 1200 }))
+    } else if (mod && e.key === 'c') {
+      copy(display(rows[r][c]))
+    } else if (mod && e.key === 'a') {
+      e.preventDefault()
+      p.onSelect?.(new Set(rows.map((_, i) => i)))
     }
+  }
+
+  // Remember which cell was right-clicked so the context menu acts on it.
+  function onContext(e: React.MouseEvent) {
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-r]')
+    if (!cell) return
+    setActive({ r: Number(cell.dataset.r), c: Number(cell.dataset.c) })
   }
 
   function resize(i: number, e: PointerEvent) {
@@ -109,14 +142,47 @@ export function DataGrid(p: Props) {
     p.onSelect(next)
   }
 
+  const ctx = active && rows[active.r] ? { r: active.r, c: active.c, col: columns[active.c], val: rows[active.r][active.c] } : null
+  const menu = ctx && (
+    <>
+      <CtxLabel>{ctx.col.name}</CtxLabel>
+      <CtxItem icon={<Copy />} shortcut={`${modKey}+C`} onSelect={() => copy(display(ctx.val))}>Copy value</CtxItem>
+      <CtxItem icon={<Braces />} onSelect={() => copy(rowJson(ctx.r), 'row as JSON')}>Copy row as JSON</CtxItem>
+      <CtxItem icon={<Columns3 />} onSelect={() => copy(ctx.col.name, 'column name')}>Copy column name</CtxItem>
+      {p.onFilterBy && (
+        <>
+          <CtxSeparator />
+          <CtxItem icon={<Filter />} onSelect={() => p.onFilterBy!(ctx.col.name, ctx.val)}>
+            Filter where {ctx.col.name} {ctx.val === null ? 'is NULL' : `= ${display(ctx.val).slice(0, 24)}`}
+          </CtxItem>
+        </>
+      )}
+      {p.editable && p.rowState?.(ctx.r) !== 'deleted' && (
+        <>
+          <CtxSeparator />
+          <CtxItem icon={<Pencil />} shortcut="Enter" onSelect={() => startEdit(ctx.r, ctx.c)}>Edit cell</CtxItem>
+          <CtxItem icon={<Ban />} onSelect={() => p.onEdit?.(ctx.r, ctx.c, null)}>Set to NULL</CtxItem>
+          {p.onDeleteRows && (
+            <CtxItem icon={<Trash2 />} danger shortcut="Del" onSelect={() => p.onDeleteRows!(p.selected?.has(ctx.r) ? [...p.selected] : [ctx.r])}>
+              Delete {p.selected?.has(ctx.r) && p.selected.size > 1 ? `${p.selected.size} rows` : 'row'}
+            </CtxItem>
+          )}
+        </>
+      )}
+    </>
+  )
+
   return (
+    <ContextMenu content={menu}>
     <div
       ref={scrollRef}
       tabIndex={0}
       role="grid"
       aria-rowcount={rows.length}
       aria-colcount={columns.length}
+      aria-label="Data grid. Use arrow keys to move, Enter to edit, Space to select a row."
       onKeyDown={onKey}
+      onContextMenuCapture={onContext}
       className="relative h-full overflow-auto font-mono text-[12.5px] outline-none"
     >
       <div style={{ width: totalWidth, minWidth: '100%' }}>
@@ -184,6 +250,9 @@ export function DataGrid(p: Props) {
                     <div
                       key={c}
                       role="gridcell"
+                      data-r={r}
+                      data-c={c}
+                      aria-selected={isActive || undefined}
                       onClick={() => setActive({ r, c })}
                       onDoubleClick={() => startEdit(r, c)}
                       title={val !== null && display(val).length > 40 ? display(val).slice(0, 2000) : undefined}
@@ -204,6 +273,7 @@ export function DataGrid(p: Props) {
         </div>
       </div>
     </div>
+    </ContextMenu>
   )
 }
 

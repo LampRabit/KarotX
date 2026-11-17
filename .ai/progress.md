@@ -1,7 +1,7 @@
 # Progress
 
 ## Status
-Phase 1 (relational core) done. Next: Phase 2 (Query Commander).
+Phase 1 done, plus the 2026-11-18 UX round (below). Next: Phase 2 (Query Commander).
 
 ## Done
 - Requirements gathered (see context.md, decisions.md).
@@ -23,11 +23,21 @@ Phase 1 (relational core) done. Next: Phase 2 (Query Commander).
     - API end-to-end on LampRabit's Postgres 18 and MariaDB 12: types, edits, cancel, production guard, read-only.
   - **Not yet verified live:** an SSH tunnel (no SSH server available), TLS verify with custom CA/client certs, and Oracle MySQL (only MariaDB was tested).
 
+- 2026-11-18 UX round (owner feedback):
+  - SQLite file browser.
+  - "+" opens a database tab with table cards and a growing query box.
+  - Custom context menus (tree, cards, grid cells, tabs, connections).
+  - The new-connection button is now an icon next to the logo.
+  - Redesigned tabs and a WHERE filter bar.
+  - Data/Structure views for tables.
+  - Table designer (create/alter), create/drop database or schema, empty/drop table with typed confirmation.
+  - Command palette and keyboard shortcuts.
+  - Verified: a Playwright walkthrough (SQLite), plus DDL, tables/columns and scope-isolation checks on Postgres 18 and MariaDB 12.
+
 ## Next
 - Phase 2: Query Commander (visual query builder).
 - Known gaps to pick up:
   - Expanded tree state isn't persisted.
-  - The SQLite file path is typed by hand (no file browser yet).
   - Postgres shows only the connected database (no database switcher yet).
 
 ## Open questions

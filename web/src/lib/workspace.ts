@@ -5,7 +5,8 @@ import { track } from './activity'
 
 export type Tab =
   | { id: string; kind: 'table'; connId: string; title: string; table: TableRef }
-  | { id: string; kind: 'query'; connId: string; title: string; sql: string }
+  | { id: string; kind: 'query'; connId: string; title: string; sql: string; schema?: string }
+  | { id: string; kind: 'database'; connId: string; title: string; schema?: string; sql?: string }
 
 type TreeEntry = { nodes?: TreeNode[]; loading: boolean; error?: string }
 
@@ -16,6 +17,8 @@ type Workspace = {
   expanded: Record<string, boolean>
   tabs: Tab[]
   activeTab: string // '' = Home
+  /** Bumped after DDL so open views reload their schema. */
+  schemaVersion: Record<string, number>
 
   init: (tabs: unknown[], activeTab?: string) => void
   refresh: () => Promise<void>
@@ -28,8 +31,11 @@ type Workspace = {
   toggle: (key: string, open?: boolean) => void
 
   openTable: (connId: string, ref: TableRef) => void
-  openQuery: (connId: string, sql?: string) => void
+  openQuery: (connId: string, sql?: string, schema?: string) => void
+  openDatabase: (connId: string, schema?: string) => void
   closeTab: (id: string) => void
+  closeTabs: (ids: string[]) => void
+  schemaChanged: (connId: string, schema?: string) => void
   closeConnectionTabs: (connId: string) => void
   setActive: (id: string) => void
   updateTab: (id: string, patch: Partial<Tab>) => void
@@ -44,9 +50,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   expanded: {},
   tabs: [],
   activeTab: '',
+  schemaVersion: {},
 
   init: (tabs, activeTab) => {
-    const valid = (tabs as Tab[]).filter((t) => t && t.id && t.connId && (t.kind === 'table' || t.kind === 'query'))
+    const valid = (tabs as Tab[]).filter((t) => t && t.id && t.connId && ['table', 'query', 'database'].includes(t.kind))
     set({ tabs: valid, activeTab: valid.some((t) => t.id === activeTab) ? activeTab! : '' })
   },
 
@@ -114,10 +121,30 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
   },
 
-  openQuery: (connId, sql = '') => {
+  openQuery: (connId, sql = '', schema) => {
     const n = get().tabs.filter((t) => t.kind === 'query').length + 1
-    const tab: Tab = { id: newId(), kind: 'query', connId, title: `Query ${n}`, sql }
+    const tab: Tab = { id: newId(), kind: 'query', connId, title: `Query ${n}`, sql, schema }
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
+  },
+
+  openDatabase: (connId, schema) => {
+    const existing = get().tabs.find((t) => t.kind === 'database' && t.connId === connId && (!schema || t.schema === schema))
+    if (existing) return set({ activeTab: existing.id })
+    const name = get().connections.find((c) => c.id === connId)?.name ?? 'Database'
+    const tab: Tab = { id: newId(), kind: 'database', connId, title: schema ?? name, schema }
+    set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
+  },
+
+  closeTabs: (ids) =>
+    set((s) => {
+      const tabs = s.tabs.filter((t) => !ids.includes(t.id))
+      return { tabs, activeTab: tabs.some((t) => t.id === s.activeTab) ? s.activeTab : (tabs[tabs.length - 1]?.id ?? '') }
+    }),
+
+  schemaChanged: (connId, schema) => {
+    set((s) => ({ schemaVersion: { ...s.schemaVersion, [connId]: (s.schemaVersion[connId] ?? 0) + 1 } }))
+    get().loadTree(connId, [], true)
+    if (schema) get().loadTree(connId, [schema], true)
   },
 
   closeTab: (id) =>

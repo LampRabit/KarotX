@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { Lock, Moon, Plus, Search, Settings, Sun, Unplug } from 'lucide-react'
+import { Command, DatabaseZap, Keyboard, Lock, Moon, Search, Settings, Sun, Unplug } from 'lucide-react'
 import type { ConnView } from '@/lib/api'
+import { openDialog } from '@/lib/dialogs'
 import { useWorkspace } from '@/lib/workspace'
 import { ConnectionList } from './connections/ConnectionList'
 import { Skeleton } from './ui/Skeleton'
 import { prefersDark, type Mode } from '@/themes'
 import type { Session } from '@/lib/api'
 import { modKey } from '@/lib/hooks'
-import { Button } from './ui/Button'
 import { Kbd } from './ui/Kbd'
 import { Tooltip } from './ui/Tooltip'
 import { LogoMark, Wordmark } from './Logo'
@@ -31,30 +31,42 @@ export function Sidebar({ session, mode, onModeChange, onNewConnection, onEditCo
 
   return (
     <aside aria-label="Connections" className="flex w-[264px] shrink-0 flex-col border-r bg-sidebar">
-      <div className="flex h-14 items-center gap-2.5 px-4">
+      <div className="flex h-14 items-center gap-2.5 pr-2.5 pl-4">
         <LogoMark size={32} />
-        <div className="min-w-0 leading-tight">
+        <div className="min-w-0 flex-1 leading-tight">
           <Wordmark className="block text-[17px]" />
           <Tooltip content={session.statePath} side="bottom">
             <div className="truncate text-xs text-muted-foreground">{fileName(session.statePath)}</div>
           </Tooltip>
         </div>
+        <Tooltip content="New connection (Alt+N)" side="bottom">
+          <button
+            onClick={onNewConnection}
+            aria-label="New connection"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition hover:brightness-110 active:scale-95"
+          >
+            <DatabaseZap size={17} strokeWidth={2.2} />
+          </button>
+        </Tooltip>
       </div>
 
-      <div className="space-y-2 px-3">
-        <Button className="w-full" onClick={onNewConnection}>
-          <Plus size={16} aria-hidden /> New connection
-        </Button>
+      <div className="px-3">
         <label className="relative block">
           <span className="sr-only">Search connections</span>
           <Search size={15} aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
           <input
+            id="kx-sidebar-search"
             type="search"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') (e.preventDefault(), document.querySelector<HTMLElement>('#kx-tree [data-tree-item]')?.focus())
+              if (e.key === 'Escape') (setFilter(''), e.currentTarget.blur())
+            }}
             placeholder="Search connections"
-            className="h-8 w-full rounded-lg border bg-surface pr-2 pl-8 text-[13px] outline-none transition placeholder:text-muted-foreground/80 hover:border-foreground/20 focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20 focus-visible:outline-none"
+            className="peer h-8 w-full rounded-lg border bg-surface pr-8 pl-8 text-[13px] outline-none transition placeholder:text-muted-foreground/80 hover:border-foreground/20 focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20 focus-visible:outline-none"
           />
+          <Kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 peer-focus:hidden">/</Kbd>
         </label>
       </div>
 
@@ -90,6 +102,18 @@ export function Sidebar({ session, mode, onModeChange, onNewConnection, onEditCo
           <Settings size={15} aria-hidden /> Settings
           <Kbd className="ml-auto">{modKey} ,</Kbd>
         </button>
+        <Tooltip content={`Command palette (${modKey}+K)`}>
+          <button onClick={() => openDialog({ kind: 'palette' })} aria-label="Command palette"
+            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground">
+            <Command size={15} />
+          </button>
+        </Tooltip>
+        <Tooltip content="Keyboard shortcuts (?)">
+          <button onClick={() => openDialog({ kind: 'shortcuts' })} aria-label="Keyboard shortcuts"
+            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground">
+            <Keyboard size={15} />
+          </button>
+        </Tooltip>
         <Tooltip content={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
           <button
             onClick={() => onModeChange(isDark ? 'light' : 'dark')}

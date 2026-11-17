@@ -31,7 +31,7 @@ func TestSQLiteEndToEnd(t *testing.T) {
 	}
 	defer c.Close()
 
-	res, err := c.Query(ctx, "insert into users(name) values ('ann'), ('bob'); select * from users order by id", 0)
+	res, err := c.Query(ctx, "insert into users(name) values ('ann'), ('bob'); select * from users order by id", driver.QueryOptions{})
 	if err != nil || len(res) != 2 || res[0].Error != "" || *res[0].RowsAffected != 2 || len(res[1].Rows) != 2 {
 		t.Fatalf("query: %v %+v", err, res)
 	}
@@ -63,7 +63,7 @@ func TestSQLiteEndToEnd(t *testing.T) {
 	if _, err := c.Apply(ctx, driver.ApplyRequest{TableRef: ref, Changes: changes}, false); err != nil {
 		t.Fatal(err)
 	}
-	res, _ = c.Query(ctx, "select name, note from users order by id", 0)
+	res, _ = c.Query(ctx, "select name, note from users order by id", driver.QueryOptions{})
 	if got := res[0].Rows; len(got) != 2 || got[0][1] != "it's ? $1" || got[1][0] != "cy" {
 		t.Fatalf("after apply: %+v", got)
 	}
@@ -76,9 +76,18 @@ func TestSQLiteEndToEnd(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no row matched") {
 		t.Fatalf("stale edit: %v", err)
 	}
-	res, _ = c.Query(ctx, "select count(*) from users", 0)
+	res, _ = c.Query(ctx, "select count(*) from users", driver.QueryOptions{})
 	if res[0].Rows[0][0] != int64(2) {
 		t.Fatalf("rollback failed: %+v", res[0].Rows)
+	}
+
+	tables, err := c.Tables(ctx, "main")
+	if err != nil || len(tables) != 1 || tables[0].Kind != "table" {
+		t.Fatalf("tables: %v %+v", err, tables)
+	}
+	info, err := c.Columns(ctx, ref)
+	if err != nil || len(info) != 3 || !info[0].PrimaryKey || !info[0].AutoIncrement || !info[1].Nullable {
+		t.Fatalf("columns: %v %+v", err, info)
 	}
 
 	// Read-only sessions reject writes.
@@ -87,7 +96,7 @@ func TestSQLiteEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ro.Close()
-	res, _ = ro.Query(ctx, "delete from users", 0)
+	res, _ = ro.Query(ctx, "delete from users", driver.QueryOptions{})
 	if res[0].Error == "" {
 		t.Fatal("read-only connection allowed a delete")
 	}

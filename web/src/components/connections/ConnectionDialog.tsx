@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ArrowLeft, CheckCircle2, KeyRound, Link2, Plus, ShieldAlert, Trash2, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, FolderOpen, KeyRound, Link2, Plus, ShieldAlert, Trash2, XCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
 import { api, ApiError, type Connection, type ConnView, type HostKeyPrompt, type Info, type SSHAuth, type SSHHop, type TLSMode } from '@/lib/api'
@@ -8,6 +8,7 @@ import { cn } from '@/lib/cn'
 import { databases, kindOf, parseConnectionUrl, type DbKind } from '@/lib/databases'
 import { useWorkspace } from '@/lib/workspace'
 import { BrandIcon } from '../BrandIcon'
+import { FileBrowser } from '../FileBrowser'
 import { Button } from '../ui/Button'
 import { Collapsible } from '../ui/Collapsible'
 import { Dialog } from '../ui/Dialog'
@@ -54,6 +55,7 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
   const [test, setTest] = useState<TestState>({ status: 'idle' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [browsing, setBrowsing] = useState(false)
   const { refresh, openConnection } = useWorkspace()
 
   // Reset the form whenever the dialog opens.
@@ -218,7 +220,12 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                 </div>
 
                 {c.driver === 'sqlite' ? (
-                  <Input label="Database file" placeholder="C:\data\app.db" value={c.file ?? ''} onChange={(e) => set({ file: e.target.value })} hint="Full path to an existing .db / .sqlite file on the computer running KarotX." required />
+                  <div className="flex items-end gap-2">
+                    <Input className="min-w-0 flex-1" label="Database file" placeholder="C:\data\app.db" value={c.file ?? ''} onChange={(e) => set({ file: e.target.value })} hint="An existing .db / .sqlite file on the computer running KarotX." required />
+                    <Button type="button" variant="secondary" className="mb-[22px] h-10" onClick={() => setBrowsing(true)}>
+                      <FolderOpen size={15} aria-hidden /> Browse…
+                    </Button>
+                  </div>
                 ) : (
                   <>
                     <div className="grid grid-cols-[1fr_110px] gap-3">
@@ -341,6 +348,15 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
           </footer>
         )}
       </div>
+      <FileBrowser
+        open={browsing}
+        start={c?.file}
+        onClose={() => setBrowsing(false)}
+        onPick={(file) => {
+          set({ file })
+          setBrowsing(false)
+        }}
+      />
     </Dialog>
   )
 }

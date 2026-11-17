@@ -32,6 +32,13 @@ const theme = EditorView.theme({
   '.cm-placeholder': { color: 'var(--muted-foreground)' },
 })
 
+const compactTheme = EditorView.theme({
+  '&': { backgroundColor: 'transparent', fontSize: '14px' },
+  '.cm-content': { padding: '4px 0' },
+  '.cm-line': { padding: '0 2px' },
+  '.cm-scroller': { overflow: 'auto' },
+})
+
 type Props = {
   value: string
   onChange: (v: string) => void
@@ -39,18 +46,23 @@ type Props = {
   schema: Record<string, string[]>
   onRun: () => void
   editorRef?: React.Ref<ReactCodeMirrorRef>
+  /** Compact mode: auto-grows between min and max height, no line numbers. */
+  compact?: { minHeight: string; maxHeight: string }
+  placeholder?: string
+  autoFocus?: boolean
 }
 
-export function SqlEditor({ value, onChange, dialect, schema, onRun, editorRef }: Props) {
+export function SqlEditor({ value, onChange, dialect, schema, onRun, editorRef, compact, placeholder, autoFocus }: Props) {
   const extensions = useMemo(
     () => [
       sql({ dialect: dialects[dialect], schema, upperCaseKeywords: true }),
       syntaxHighlighting(highlight),
       theme,
+      ...(compact ? [compactTheme] : []),
       EditorView.lineWrapping,
       Prec.highest(keymap.of([{ key: 'Mod-Enter', run: () => (onRun(), true) }])),
     ],
-    [dialect, schema, onRun],
+    [dialect, schema, onRun, compact],
   )
   return (
     <CodeMirror
@@ -59,10 +71,20 @@ export function SqlEditor({ value, onChange, dialect, schema, onRun, editorRef }
       onChange={onChange}
       extensions={extensions}
       theme="none"
-      height="100%"
-      placeholder="Write SQL here. Press Ctrl+Enter to run."
-      basicSetup={{ foldGutter: false, highlightActiveLineGutter: true, autocompletion: true, bracketMatching: true }}
-      className="h-full"
+      height={compact ? undefined : '100%'}
+      minHeight={compact?.minHeight}
+      maxHeight={compact?.maxHeight}
+      autoFocus={autoFocus}
+      placeholder={placeholder ?? 'Write SQL here. Press Ctrl+Enter to run.'}
+      basicSetup={{
+        foldGutter: false,
+        lineNumbers: !compact,
+        highlightActiveLine: !compact,
+        highlightActiveLineGutter: !compact,
+        autocompletion: true,
+        bracketMatching: true,
+      }}
+      className={compact ? 'kx-compact' : 'h-full'}
       aria-label="SQL editor"
     />
   )

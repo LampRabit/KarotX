@@ -24,6 +24,9 @@ func (s *Server) routeConnections(api *http.ServeMux) {
 	api.HandleFunc("POST /api/connections/{id}/connect", a(s.connect))
 	api.HandleFunc("POST /api/connections/{id}/disconnect", a(s.disconnect))
 	api.HandleFunc("GET /api/connections/{id}/tree", a(s.tree))
+	api.HandleFunc("GET /api/connections/{id}/tables", a(s.tables))
+	api.HandleFunc("GET /api/connections/{id}/columns", a(s.columns))
+	api.HandleFunc("GET /api/fs", a(s.browseFS))
 	api.HandleFunc("POST /api/connections/{id}/query", a(s.query))
 	api.HandleFunc("POST /api/connections/{id}/browse", a(s.browse))
 	api.HandleFunc("POST /api/connections/{id}/apply", a(s.apply))
@@ -136,6 +139,35 @@ func (s *Server) tree(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, nodes)
 }
 
+func (s *Server) tables(w http.ResponseWriter, r *http.Request) {
+	c, err := s.opt.Conns.Session(r.Context(), r.PathValue("id"))
+	if err != nil {
+		connErr(w, err)
+		return
+	}
+	t, err := c.Tables(r.Context(), r.URL.Query().Get("schema"))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, t)
+}
+
+func (s *Server) columns(w http.ResponseWriter, r *http.Request) {
+	c, err := s.opt.Conns.Session(r.Context(), r.PathValue("id"))
+	if err != nil {
+		connErr(w, err)
+		return
+	}
+	q := r.URL.Query()
+	cols, err := c.Columns(r.Context(), driver.TableRef{Schema: q.Get("schema"), Table: q.Get("table")})
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, cols)
+}
+
 // guard enforces the production safety rule: destructive work on a
 // production connection needs explicit confirmation from the user.
 func (s *Server) guard(w http.ResponseWriter, id string, confirmed bool, risky []string) bool {
@@ -160,6 +192,7 @@ func (s *Server) guard(w http.ResponseWriter, id string, confirmed bool, risky [
 func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		SQL       string `json:"sql"`
+		Schema    string `json:"schema"`
 		QueryID   string `json:"queryId"`
 		MaxRows   int    `json:"maxRows"`
 		Confirmed bool   `json:"confirmed"`
@@ -184,7 +217,7 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 	}
 	var results []*driver.Result
 	err = s.opt.Conns.Run(r.Context(), b.QueryID, func(ctx context.Context) error {
-		results, err = c.Query(ctx, b.SQL, b.MaxRows)
+		results, err = c.Query(ctx, b.SQL, driver.QueryOptions{MaxRows: b.MaxRows, Schema: b.Schema})
 		return err
 	})
 	if err != nil {

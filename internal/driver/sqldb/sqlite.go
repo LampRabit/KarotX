@@ -59,3 +59,18 @@ func (sqlite) tree(ctx context.Context, db *sql.DB, path []string) ([]driver.Nod
 	}
 	return []driver.Node{}, nil
 }
+
+func (sqlite) useSchema(string) string { return "" }
+
+func (sqlite) tables(ctx context.Context, db *sql.DB, _ string) ([]driver.TableInfo, error) {
+	return queryTables(ctx, db, `
+		SELECT name, type, NULL, NULL FROM sqlite_master
+		WHERE type IN ('table','view') AND name NOT LIKE 'sqlite\_%' ESCAPE '\'
+		ORDER BY name`)
+}
+
+func (sqlite) columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]driver.ColumnInfo, error) {
+	return queryColumns(ctx, db, `
+		SELECT name, type, "notnull" = 0, dflt_value, pk > 0, pk > 0 AND upper(type) = 'INTEGER'
+		FROM pragma_table_info(?) ORDER BY cid`, t.Table)
+}

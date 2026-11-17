@@ -137,3 +137,18 @@ func (mysqlDialect) tree(ctx context.Context, db *sql.DB, path []string) ([]driv
 	}
 	return []driver.Node{}, nil
 }
+
+func (m mysqlDialect) useSchema(schema string) string { return "USE " + m.quote(schema) }
+
+func (mysqlDialect) tables(ctx context.Context, db *sql.DB, schema string) ([]driver.TableInfo, error) {
+	return queryTables(ctx, db, `
+		SELECT table_name, IF(table_type = 'VIEW', 'view', 'table'), table_rows, data_length + index_length
+		FROM information_schema.tables WHERE table_schema = ? ORDER BY table_name`, schema)
+}
+
+func (mysqlDialect) columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]driver.ColumnInfo, error) {
+	return queryColumns(ctx, db, `
+		SELECT column_name, column_type, is_nullable = 'YES', column_default, column_key = 'PRI', extra LIKE '%auto_increment%'
+		FROM information_schema.columns WHERE table_schema = ? AND table_name = ?
+		ORDER BY ordinal_position`, t.Schema, t.Table)
+}
