@@ -7,7 +7,8 @@ web/dist/*
 web/node_modules/
 
 # local state files
-*.state
+*.kxs
 
 .DS_Store
 *.tsbuildinfo
+*.state

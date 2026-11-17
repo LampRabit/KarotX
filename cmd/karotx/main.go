@@ -11,10 +11,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
 
+	"github.com/lamprabit/karotx/internal/auth"
 	"github.com/lamprabit/karotx/internal/server"
 	"github.com/lamprabit/karotx/internal/state"
 	"github.com/lamprabit/karotx/web"
@@ -32,9 +34,8 @@ func main() {
 func run() error {
 	host := flag.String("host", "0.0.0.0", "address to listen on")
 	port := flag.Int("port", 8732, "port to listen on")
-	statePath := flag.String("state", "karotx.state", "path to the encrypted state file")
+	statePath := flag.String("state", "karotx.kxs", "path to the encrypted workspace file (.kxs)")
 	theme := flag.String("theme", "", "UI theme id (overrides the state file)")
-	password := flag.String("password", os.Getenv("KAROTX_PASSWORD"), "protect the UI with a password (or set KAROTX_PASSWORD)")
 	noOpen := flag.Bool("no-open", false, "don't open the browser on start")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -44,7 +45,14 @@ func run() error {
 		return nil
 	}
 
+	if filepath.Ext(*statePath) == "" {
+		*statePath += ".kxs"
+	}
 	store, err := state.Open(*statePath)
+	if err != nil {
+		return err
+	}
+	authn, err := auth.Load()
 	if err != nil {
 		return err
 	}
@@ -57,16 +65,16 @@ func run() error {
 
 	srv := &http.Server{
 		Handler: server.New(server.Options{
-			Version: version, Password: *password, Theme: *theme,
-			Store: store, UI: web.Dist(),
+			Version: version, Addr: addr, Theme: *theme,
+			Store: store, Auth: authn, UI: web.Dist(),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	url := fmt.Sprintf("http://localhost:%d", *port)
-	fmt.Printf("\n  KarotX %s\n\n  UI:     %s\n  State:  %s\n\n", version, url, store.Path())
-	if *password == "" && !isLoopback(*host) {
-		fmt.Printf("  ⚠ Listening on %s without a password. Anyone on your network\n    can reach your databases. Use --password to protect it.\n\n", *host)
+	fmt.Printf("\n  KarotX %s\n\n  UI:        %s\n  Workspace: %s\n\n", version, url, store.Path())
+	if !authn.Enabled() && !isLoopback(*host) {
+		fmt.Printf("  ⚠ Listening on %s without a password. Anyone on your network\n    can reach your databases. Set one in Settings → Security.\n\n", *host)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

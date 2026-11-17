@@ -2,6 +2,8 @@
 // settings) in a single AES-256-GCM encrypted file. The key never lives in
 // the file: each file gets a random key stored in the OS keychain.
 //
+// Workspace files use the .kxs extension.
+//
 // File layout: magic(4) | version(1) | fileID(16) | nonce(12) | ciphertext
 // The header is authenticated as GCM additional data.
 package state

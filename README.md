@@ -8,25 +8,25 @@ Part of the [LampRabit](https://github.com/LampRabit) family.
 ## Run
 
 ```sh
-karotx                      # http://localhost:8732, state in ./karotx.state
-karotx --port 9000 --state ~/work.state --theme karot
-KAROTX_PASSWORD=secret karotx   # protect the UI with a password
+karotx                      # http://localhost:8732, workspace in ./karotx.kxs
+karotx --port 9000 --state ~/work.kxs --theme karot
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--host` | `0.0.0.0` | Address to listen on |
 | `--port` | `8732` | Port to listen on |
-| `--state` | `karotx.state` | Encrypted state file (connections, open tabs) |
+| `--state` | `karotx.kxs` | Encrypted workspace file (connections, open tabs) |
 | `--theme` | from state file | UI theme id |
-| `--password` | `$KAROTX_PASSWORD` | Require a password to open the UI |
 | `--no-open` | `false` | Don't open the browser on start |
 
-The state file is encrypted with a key stored in your OS keychain. Database passwords are also kept in the keychain, never in the file.
+The workspace file (`.kxs`) is encrypted with a key stored in your OS keychain. Database passwords are also kept in the keychain, never in the file.
+
+**Password protection** is set once from **Settings → Security**. It's stored as an Argon2id hash in your OS keychain and applies to every workspace. For safety, it can only be set or changed from the computer running KarotX.
 
 ## Develop
 
-Requires Go 1.24+, Node 22+ and pnpm.
+Requires Go 1.26+, Node 22+ and pnpm.
 
 ```sh
 pnpm -C web install

@@ -18,3 +18,6 @@ Newest at the bottom. Format: **date — decision.** Why.
 - **2026-11-17 — SSH: support every common method.** Password, private key (with passphrase), ssh-agent, and jump hosts (chained hops).
 - **2026-11-17 — Import/export (CSV, JSON, SQL dump) deferred to the release after the MVP.**
 - **2026-11-17 — UI-first meaning:** users should rarely need to write queries by hand. The grid, filters and Commander cover everyday work, and the editor is for power use.
+- **2026-11-17 — Workspace file extension `.kxs`**, default `./karotx.kxs`. A path given without an extension gets `.kxs` added.
+- **2026-11-17 — UI password is set from the UI, not the CLI.** It's stored as an Argon2id hash in the OS keychain (`karotx` / `auth:password`), applies to every workspace for the OS user, and is configured once. It can only be set, changed or removed from loopback requests, so nobody on the network can claim it first. Changing it revokes all sessions.
+- **2026-11-17 — UI quality bar raised.** Inter font (bundled), `motion` for animation, `sonner` for toasts, Radix Dialog and Tooltip for accessibility, a global activity tracker, and a loader kit (spinner, skeleton, progress, top bar). Brand logos come from `simple-icons`.
