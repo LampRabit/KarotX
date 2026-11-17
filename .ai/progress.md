@@ -42,6 +42,8 @@ Phase 1 done, plus the 2026-11-18 UX round (below). Next: Phase 2 (Query Command
     - Playwright at 1065×648 (no horizontal scroll; rebuild kept rows; NULL filled with default).
     - Primary-key moves on Postgres 18 and MariaDB 12 using the real ddl.ts.
 
+- Release pipeline: CI (UI build, gofmt, vet, race tests, cross-platform GoReleaser dry run) is green on GitHub. Pushing a `v*` tag publishes a release. No release has been tagged yet.
+
 ## Next
 - Phase 2: Query Commander (visual query builder).
 - Known gaps to pick up:
