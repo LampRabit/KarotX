@@ -148,7 +148,16 @@ func (mysqlDialect) tables(ctx context.Context, db *sql.DB, schema string) ([]dr
 
 func (mysqlDialect) columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]driver.ColumnInfo, error) {
 	return queryColumns(ctx, db, `
-		SELECT column_name, column_type, is_nullable = 'YES', column_default, column_key = 'PRI', extra LIKE '%auto_increment%'
+		SELECT column_name, column_type, is_nullable = 'YES',
+		       -- Normalise to a SQL expression: MariaDB already returns one (with 'NULL' meaning
+		       -- "no default"); MySQL returns string literals unquoted.
+		       CASE
+		         WHEN column_default IS NULL THEN NULL
+		         WHEN VERSION() LIKE '%MariaDB%' THEN NULLIF(column_default, 'NULL')
+		         WHEN extra LIKE '%DEFAULT_GENERATED%' OR column_default REGEXP '^-?[0-9]+(\\.[0-9]+)?$' THEN column_default
+		         ELSE CONCAT('''', REPLACE(column_default, '''', ''''''), '''')
+		       END,
+		       column_key = 'PRI', extra LIKE '%auto_increment%', NULL
 		FROM information_schema.columns WHERE table_schema = ? AND table_name = ?
 		ORDER BY ordinal_position`, t.Schema, t.Table)
 }

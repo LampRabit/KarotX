@@ -18,6 +18,7 @@ type Props = {
   schema: Record<string, string[]>
   scopeLabel: string
   elapsed: number
+  placeholder?: string
 }
 
 /**
@@ -63,7 +64,7 @@ export function QueryComposer(p: Props) {
               schema={p.schema}
               onRun={run}
               compact={{ minHeight: big ? `${maxH}px` : '26px', maxHeight: `${maxH}px` }}
-              placeholder={`Type SQL to run in ${p.scopeLabel}…`}
+              placeholder={p.placeholder ?? `Type SQL to run in ${p.scopeLabel}…`}
             />
           </div>
           <Tooltip content={big ? 'Shrink' : 'Expand'}>

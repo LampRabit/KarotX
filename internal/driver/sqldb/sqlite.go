@@ -71,6 +71,25 @@ func (sqlite) tables(ctx context.Context, db *sql.DB, _ string) ([]driver.TableI
 
 func (sqlite) columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]driver.ColumnInfo, error) {
 	return queryColumns(ctx, db, `
-		SELECT name, type, "notnull" = 0, dflt_value, pk > 0, pk > 0 AND upper(type) = 'INTEGER'
-		FROM pragma_table_info(?) ORDER BY cid`, t.Table)
+		SELECT name, type, "notnull" = 0, dflt_value, pk > 0,
+		       pk > 0 AND upper(type) = 'INTEGER'
+		         AND (SELECT upper(sql) FROM sqlite_master WHERE type = 'table' AND name = ?1) LIKE '%AUTOINCREMENT%',
+		       NULL
+		FROM pragma_table_info(?1) ORDER BY cid`, t.Table)
+}
+
+// CreateSQLiteFile creates a new, empty SQLite database at path. It refuses
+// to overwrite an existing file.
+func CreateSQLiteFile(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists", filepath.Base(path))
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?mode=rwc")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	// Writing the header makes the file a real (empty) database.
+	_, err = db.Exec("PRAGMA user_version = 0; VACUUM")
+	return err
 }

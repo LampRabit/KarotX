@@ -76,6 +76,8 @@ type ColumnInfo struct {
 	Default       *string `json:"default"`
 	PrimaryKey    bool    `json:"primaryKey"`
 	AutoIncrement bool    `json:"autoIncrement"`
+	// PrimaryKeyName is the PK constraint name (Postgres), needed to change the key.
+	PrimaryKeyName string `json:"primaryKeyName,omitempty"`
 }
 
 type Column struct {

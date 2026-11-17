@@ -183,6 +183,8 @@ export function DataGrid(p: Props) {
       aria-label="Data grid. Use arrow keys to move, Enter to edit, Space to select a row."
       onKeyDown={onKey}
       onContextMenuCapture={onContext}
+      // Only cells have a menu: on headers or empty space, cancel so nothing opens.
+      onContextMenu={(e) => !(e.target as HTMLElement).closest('[data-r]') && e.preventDefault()}
       className="relative h-full overflow-auto font-mono text-[12.5px] outline-none"
     >
       <div style={{ width: totalWidth, minWidth: '100%' }}>

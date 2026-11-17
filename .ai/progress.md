@@ -34,6 +34,14 @@ Phase 1 done, plus the 2026-11-18 UX round (below). Next: Phase 2 (Query Command
   - Command palette and keyboard shortcuts.
   - Verified: a Playwright walkthrough (SQLite), plus DDL, tables/columns and scope-isolation checks on Postgres 18 and MariaDB 12.
 
+- 2026-11-18 follow-ups:
+  - Primary-key changes (Postgres/MySQL/MariaDB), SQLite table rebuilds, and creating new SQLite files.
+  - A query box in table tabs, a single-row table toolbar, a designer without horizontal scroll, and no empty context menus.
+  - Verified:
+    - Go tests (rebuild with trigger, new file).
+    - Playwright at 1065×648 (no horizontal scroll; rebuild kept rows; NULL filled with default).
+    - Primary-key moves on Postgres 18 and MariaDB 12 using the real ddl.ts.
+
 ## Next
 - Phase 2: Query Commander (visual query builder).
 - Known gaps to pick up:

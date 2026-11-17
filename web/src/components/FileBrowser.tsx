@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Database, File, Folder, HardDrive, House, Loader2 } from 'lucide-react'
+import { ArrowUp, Database, File, FilePlus2, Folder, HardDrive, House, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { api, type FsEntry, type FsListing } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { Button } from './ui/Button'
@@ -18,7 +19,26 @@ export function FileBrowser({ open, start, onClose, onPick }: { open: boolean; s
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<string>()
   const [onlyDb, setOnlyDb] = useState(true)
+  const [creating, setCreating] = useState<string | null>(null) // file name being typed
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createError, setCreateError] = useState('')
   const listRef = useRef<HTMLUListElement>(null)
+
+  async function createFile() {
+    if (!listing || !creating?.trim()) return
+    setCreateBusy(true)
+    setCreateError('')
+    try {
+      const { path: file } = await api.createSqlite(listing.path, creating.trim())
+      toast.success('Created a new SQLite database', { description: file })
+      setCreating(null)
+      onPick(file)
+    } catch (e) {
+      setCreateError((e as Error).message)
+    } finally {
+      setCreateBusy(false)
+    }
+  }
 
   const go = useCallback(async (p: string) => {
     setLoading(true)
@@ -36,7 +56,7 @@ export function FileBrowser({ open, start, onClose, onPick }: { open: boolean; s
   }, [])
 
   useEffect(() => {
-    if (open) go(start ?? '')
+    if (open) (go(start ?? ''), setCreating(null))
   }, [open, start, go])
 
   const entries = (listing?.entries ?? []).filter((e) => e.dir || !onlyDb || dbExt.test(e.name))
@@ -116,15 +136,39 @@ export function FileBrowser({ open, start, onClose, onPick }: { open: boolean; s
           {loading && listing && <Loader2 size={18} className="absolute top-3 right-4 animate-spin text-primary" aria-label="Loading" />}
         </div>
 
-        <footer className="flex items-center gap-3 border-t bg-sidebar/60 px-5 py-3">
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" checked={onlyDb} onChange={(e) => setOnlyDb(e.target.checked)} className="accent-[var(--primary)]" />
-            Only database files
-          </label>
-          <span className="ml-auto truncate text-xs text-muted-foreground" title={selected}>{selected ? selected.split(/[\\/]/).pop() : 'Double-click a file to choose it'}</span>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button disabled={!selected} onClick={() => selected && onPick(selected)}>Choose</Button>
-        </footer>
+        {creating !== null ? (
+          <form onSubmit={(e) => (e.preventDefault(), createFile())} className="space-y-2 border-t bg-sidebar/60 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <FilePlus2 size={16} className="shrink-0 text-primary" aria-hidden />
+              <label htmlFor="kx-new-db" className="shrink-0 text-[13px] font-medium">New database in this folder</label>
+              <input
+                id="kx-new-db"
+                autoFocus
+                value={creating}
+                onChange={(e) => setCreating(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), setCreating(null))}
+                spellCheck={false}
+                className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 font-mono text-[13px] outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
+              />
+              <Button type="button" variant="ghost" onClick={() => setCreating(null)}>Cancel</Button>
+              <Button type="submit" loading={createBusy} disabled={!creating.trim()}>Create</Button>
+            </div>
+            {createError && <p role="alert" className="text-[13px] text-destructive">{createError}</p>}
+          </form>
+        ) : (
+          <footer className="flex items-center gap-3 border-t bg-sidebar/60 px-5 py-3">
+            <Button variant="secondary" size="sm" disabled={!listing} onClick={() => (setCreating('new.db'), setCreateError(''))}>
+              <FilePlus2 size={14} aria-hidden /> New database file
+            </Button>
+            <label className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={onlyDb} onChange={(e) => setOnlyDb(e.target.checked)} className="accent-[var(--primary)]" />
+              Only database files
+            </label>
+            <span className="ml-auto truncate text-xs text-muted-foreground" title={selected}>{selected ? selected.split(/[\\/]/).pop() : 'Double-click a file to choose it'}</span>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button disabled={!selected} onClick={() => selected && onPick(selected)}>Choose</Button>
+          </footer>
+        )}
       </div>
     </Dialog>
   )

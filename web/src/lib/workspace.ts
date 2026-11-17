@@ -4,7 +4,7 @@ import { api, newId, type ConnView, type TableRef, type TreeNode } from './api'
 import { track } from './activity'
 
 export type Tab =
-  | { id: string; kind: 'table'; connId: string; title: string; table: TableRef }
+  | { id: string; kind: 'table'; connId: string; title: string; table: TableRef; sql?: string }
   | { id: string; kind: 'query'; connId: string; title: string; sql: string; schema?: string }
   | { id: string; kind: 'database'; connId: string; title: string; schema?: string; sql?: string }
 

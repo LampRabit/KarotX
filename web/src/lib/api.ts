@@ -60,7 +60,7 @@ export type Result = {
 }
 export type TableRef = { schema: string; table: string }
 export type TableInfo = { name: string; kind: 'table' | 'view'; rows?: number; bytes?: number }
-export type ColumnInfo = { name: string; type: string; nullable: boolean; default: string | null; primaryKey: boolean; autoIncrement: boolean }
+export type ColumnInfo = { name: string; type: string; nullable: boolean; default: string | null; primaryKey: boolean; autoIncrement: boolean; primaryKeyName?: string }
 export type FsEntry = { name: string; path: string; dir: boolean; size: number; modified: string }
 export type FsListing = { path: string; parent: string; home: string; roots: string[]; entries: FsEntry[] }
 export type Change = { kind: 'insert' | 'update' | 'delete'; key?: Record<string, Value>; values?: Record<string, Value> }
@@ -132,6 +132,7 @@ export const api = {
   columns: (id: string, ref: TableRef) =>
     request<ColumnInfo[]>('GET', `/connections/${id}/columns?schema=${enc(ref.schema)}&table=${enc(ref.table)}`),
   fs: (path: string) => request<FsListing>('GET', `/fs?path=${enc(path)}`),
+  createSqlite: (dir: string, name: string) => request<{ path: string }>('POST', '/fs/sqlite', { dir, name }),
   browse: (id: string, req: TableRef & { offset: number; limit: number; orderBy?: string; desc?: boolean; where?: string; queryId?: string }) =>
     request<Result>('POST', `/connections/${id}/browse`, req),
   apply: (id: string, ref: TableRef, changes: Change[], dryRun: boolean, confirmed = false) =>

@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -39,12 +40,35 @@ func SplitSQL(src string, hashComments bool) []string {
 				}
 			}
 		case c == ';':
+			if insideTriggerBody(src[start:i]) {
+				continue // a ';' inside CREATE TRIGGER … BEGIN … END
+			}
 			push(i)
 			start = i + 1
 		}
 	}
 	push(len(src))
 	return out
+}
+
+var triggerRe = regexp.MustCompile(`(?i)^\s*CREATE\s+(TEMP\w*\s+)?TRIGGER\b`)
+var blockWordRe = regexp.MustCompile(`(?i)\b(BEGIN|CASE|END)\b`)
+
+// insideTriggerBody reports whether a statement-so-far is a CREATE TRIGGER
+// whose BEGIN … END body is still open (CASE … END is counted too).
+func insideTriggerBody(stmt string) bool {
+	if !triggerRe.MatchString(stmt) {
+		return false
+	}
+	depth := 0
+	for _, w := range blockWordRe.FindAllString(stmt, -1) {
+		if strings.EqualFold(w, "END") {
+			depth--
+		} else {
+			depth++
+		}
+	}
+	return depth > 0
 }
 
 func skipQuoted(s string, i int, q byte) int {

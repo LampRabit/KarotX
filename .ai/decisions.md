@@ -34,3 +34,15 @@ Newest at the bottom. Format: **date — decision.** Why.
 - **2026-11-18 — File browser is server-side** (`GET /api/fs`), because browsers can't reveal real paths. It's allowed for local requests, or for remote ones when a UI password is set.
 - **2026-11-18 — Custom context menus everywhere.** The browser menu is suppressed except inside text inputs and the editor (copy/paste).
 - **2026-11-18 — Keyboard first.** Ctrl+K command palette (tables, connections, tabs, actions); Alt+N/T/W/H/1-9/[ ] for connection and tab control; `/` sidebar search; `?` shortcut list. The tree, grid, cards, file browser and tab strip are all arrow-key navigable. Toasts sit top-centre (Alt+J focuses them) so they never cover controls.
+- **2026-11-18 — Primary keys are editable in the designer.**
+  - Postgres: DROP CONSTRAINT (name read from pg_constraint), then ADD PRIMARY KEY.
+  - MySQL/MariaDB: every column and key change goes in one `ALTER TABLE` with comma-separated clauses, so constraints are checked against the final shape (an AUTO_INCREMENT column must stay keyed, and key columns can't allow NULL).
+- **2026-11-18 — SQLite uses the documented 12-step rebuild** when a change can't be done with ALTER (type, NULL, default, key, column order, auto-increment).
+  - Steps: `PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON; BEGIN; CREATE new; INSERT…SELECT; DROP; RENAME; recreate indexes/triggers; COMMIT`.
+  - A column that becomes NOT NULL is filled with its default (COALESCE) during the copy.
+  - Indexes and triggers that use renamed or dropped columns are skipped, with a warning.
+  - The SQL splitter keeps `CREATE TRIGGER … BEGIN … END` bodies intact.
+- **2026-11-18 — MySQL column defaults are normalised server-side to SQL expressions.** MariaDB returns 'NULL' for "no default"; MySQL returns string literals unquoted.
+- **2026-11-18 — New SQLite files** are created by the server (`POST /api/fs/sqlite`), never overwriting an existing file.
+- **2026-11-18 — Every table tab has the bottom query box too** (scoped to its database). The table toolbar is a single row: name, Data/Structure, WHERE filter, actions; action labels collapse to icons on narrow windows.
+- **2026-11-18 — Avoid horizontal scrolling** (owner preference). Layouts use shrinkable tracks (`minmax(0, …)`), and the grid is the only place where sideways scrolling is expected.

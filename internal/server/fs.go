@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lamprabit/karotx/internal/driver/sqldb"
 )
 
 type fsEntry struct {
@@ -65,6 +67,36 @@ func (s *Server) browseFS(w http.ResponseWriter, r *http.Request) {
 	}
 	home, _ := os.UserHomeDir()
 	writeJSON(w, map[string]any{"path": dir, "parent": parent, "home": home, "roots": roots(), "entries": entries})
+}
+
+// createSQLite makes a new empty SQLite file in a folder (same access rule as browseFS).
+func (s *Server) createSQLite(w http.ResponseWriter, r *http.Request) {
+	if !isLocal(r) && !s.opt.Auth.Enabled() {
+		writeErr(w, http.StatusForbidden, "creating files from another computer requires a password. Set one in Settings → Security")
+		return
+	}
+	var b struct{ Dir, Name string }
+	if !readJSON(w, r, &b) {
+		return
+	}
+	name := strings.TrimSpace(b.Name)
+	if name == "" || strings.ContainsAny(name, `/\:*?"<>|`) || name == "." || name == ".." {
+		writeErr(w, http.StatusBadRequest, "use a plain file name without slashes or special characters")
+		return
+	}
+	if filepath.Ext(name) == "" {
+		name += ".db"
+	}
+	if fi, err := os.Stat(b.Dir); err != nil || !fi.IsDir() {
+		writeErr(w, http.StatusBadRequest, "that folder doesn't exist")
+		return
+	}
+	path := filepath.Join(filepath.Clean(b.Dir), name)
+	if err := sqldb.CreateSQLiteFile(path); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, map[string]string{"path": path})
 }
 
 func roots() []string {

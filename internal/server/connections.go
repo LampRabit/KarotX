@@ -27,6 +27,7 @@ func (s *Server) routeConnections(api *http.ServeMux) {
 	api.HandleFunc("GET /api/connections/{id}/tables", a(s.tables))
 	api.HandleFunc("GET /api/connections/{id}/columns", a(s.columns))
 	api.HandleFunc("GET /api/fs", a(s.browseFS))
+	api.HandleFunc("POST /api/fs/sqlite", a(s.createSQLite))
 	api.HandleFunc("POST /api/connections/{id}/query", a(s.query))
 	api.HandleFunc("POST /api/connections/{id}/browse", a(s.browse))
 	api.HandleFunc("POST /api/connections/{id}/apply", a(s.apply))

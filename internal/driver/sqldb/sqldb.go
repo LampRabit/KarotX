@@ -463,12 +463,15 @@ func queryColumns(ctx context.Context, db *sql.DB, q string, args ...any) ([]dri
 	out := []driver.ColumnInfo{}
 	for rows.Next() {
 		var c driver.ColumnInfo
-		var def sql.NullString
-		if err := rows.Scan(&c.Name, &c.Type, &c.Nullable, &def, &c.PrimaryKey, &c.AutoIncrement); err != nil {
+		var def, pkName sql.NullString
+		if err := rows.Scan(&c.Name, &c.Type, &c.Nullable, &def, &c.PrimaryKey, &c.AutoIncrement, &pkName); err != nil {
 			return nil, err
 		}
 		if def.Valid {
 			c.Default = &def.String
+		}
+		if c.PrimaryKey {
+			c.PrimaryKeyName = pkName.String
 		}
 		out = append(out, c)
 	}

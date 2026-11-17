@@ -86,8 +86,51 @@ func TestSQLiteEndToEnd(t *testing.T) {
 		t.Fatalf("tables: %v %+v", err, tables)
 	}
 	info, err := c.Columns(ctx, ref)
-	if err != nil || len(info) != 3 || !info[0].PrimaryKey || !info[0].AutoIncrement || !info[1].Nullable {
+	// INTEGER PRIMARY KEY without the AUTOINCREMENT keyword is not reported as auto-increment.
+	if err != nil || len(info) != 3 || !info[0].PrimaryKey || info[0].AutoIncrement || !info[1].Nullable {
 		t.Fatalf("columns: %v %+v", err, info)
+	}
+	c.Query(ctx, "CREATE TABLE seq (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)", driver.QueryOptions{})
+	if info, _ := c.Columns(ctx, driver.TableRef{Schema: "main", Table: "seq"}); len(info) != 2 || !info[0].AutoIncrement {
+		t.Fatalf("autoincrement column: %+v", info)
+	}
+
+	// A rebuild script (as the table designer generates for SQLite) with a trigger body.
+	res, err = c.Query(ctx, `PRAGMA foreign_keys = OFF;
+PRAGMA legacy_alter_table = ON;
+BEGIN;
+CREATE TABLE "_kx_new_seq" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "v" INTEGER NOT NULL DEFAULT 0);
+INSERT INTO "_kx_new_seq" ("id", "v") SELECT "id", "v" FROM "seq";
+DROP TABLE "seq";
+ALTER TABLE "_kx_new_seq" RENAME TO "seq";
+CREATE TRIGGER seq_t AFTER INSERT ON seq BEGIN UPDATE seq SET v = v + 1 WHERE id = new.id; END;
+COMMIT;
+PRAGMA legacy_alter_table = OFF;
+PRAGMA foreign_keys = ON`, driver.QueryOptions{})
+	for _, r := range res {
+		if r.Error != "" {
+			t.Fatalf("rebuild: %s → %s", r.Statement, r.Error)
+		}
+	}
+	if err != nil || len(res) != 11 {
+		t.Fatalf("rebuild ran %d statements: %v", len(res), err)
+	}
+	if info, _ := c.Columns(ctx, driver.TableRef{Schema: "main", Table: "seq"}); info[1].Type != "INTEGER" || info[1].Nullable {
+		t.Fatalf("after rebuild: %+v", info)
+	}
+
+	// Creating a new database file.
+	newFile := filepath.Join(t.TempDir(), "new.db")
+	if err := CreateSQLiteFile(newFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateSQLiteFile(newFile); err == nil {
+		t.Fatal("CreateSQLiteFile overwrote an existing file")
+	}
+	if nc, err := (Driver{sqlite{}}).Open(ctx, driver.OpenParams{Conn: model.Connection{File: newFile}}); err != nil {
+		t.Fatalf("open new file: %v", err)
+	} else {
+		nc.Close()
 	}
 
 	// Read-only sessions reject writes.

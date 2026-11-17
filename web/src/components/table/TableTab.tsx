@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Eraser, FileCode2, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Table2, Trash2, Undo2, X } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Eraser, FileCode2, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Table2, Trash2, Undo2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
 import { api, ApiError, newId, type Change, type ColumnInfo, type ConnView, type Result, type Value } from '@/lib/api'
@@ -10,7 +10,10 @@ import { openDialog } from '@/lib/dialogs'
 import { useDelayed } from '@/lib/hooks'
 import { useWorkspace, type Tab } from '@/lib/workspace'
 import { DataGrid, display } from '../grid/DataGrid'
-import { ErrorPanel } from '../query/Results'
+import { QueryComposer } from '../database/QueryComposer'
+import { useSchema } from '../query/QueryTab'
+import { ErrorPanel, Results } from '../query/Results'
+import { useElapsed, useQueryRunner } from '../query/useQueryRunner'
 import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Dialog'
 import { Kbd } from '../ui/Kbd'
@@ -43,6 +46,11 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
   const filterRef = useRef<HTMLInputElement>(null)
   const showSpinner = useDelayed(!!loading, 150)
   const { schema, table } = tab.table
+  const updateTab = useWorkspace((s) => s.updateTab)
+  const [showResults, setShowResults] = useState(false)
+  const runner = useQueryRunner(conn, conn.driver === 'sqlite' ? undefined : schema)
+  const elapsed = useElapsed(!!runner.running)
+  const completion = useSchema(conn.id, schema)
 
   const pending = edits.size + deleted.size + inserts.length
   const columns = data?.columns ?? []
@@ -149,6 +157,7 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
 
   // Tab-level shortcuts: Ctrl+F focuses the filter, Ctrl+S reviews changes, Alt+R reloads.
   function onKey(e: React.KeyboardEvent) {
+    if ((e.target as HTMLElement).closest('.cm-editor')) return // the query box has its own keys
     const mod = e.ctrlKey || e.metaKey
     if (mod && e.key === 'f') (e.preventDefault(), setView('data'), setTimeout(() => filterRef.current?.focus()))
     else if (mod && e.key === 's') (e.preventDefault(), pending && openReview())
@@ -157,15 +166,74 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
 
   return (
     <div className="flex h-full flex-col" onKeyDown={onKey}>
-      {/* Title bar */}
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
+      {/* One toolbar: table · view switch · WHERE filter · actions */}
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Table2 size={16} aria-hidden /></span>
-        <div className="min-w-0 leading-tight">
-          <h2 className="truncate font-semibold">{table}</h2>
-          <p className="truncate text-xs text-muted-foreground">{conn.driver === 'sqlite' ? conn.name : `${schema} · ${conn.name}`}</p>
+        <div className="max-w-44 min-w-0 shrink-0 leading-tight">
+          <h2 className="truncate font-semibold" title={table}>{table}</h2>
+          <p className="truncate text-xs text-muted-foreground" title={conn.driver === 'sqlite' ? conn.name : `${schema} · ${conn.name}`}>
+            {conn.driver === 'sqlite' ? conn.name : `${schema} · ${conn.name}`}
+          </p>
         </div>
-        <Segmented label="View" value={view} onChange={setView} options={[{ value: 'data', label: 'Data' }, { value: 'structure', label: 'Structure' }]} className="ml-3" />
-        <div className="ml-auto flex items-center gap-1">
+        {showResults ? (
+          <Button size="sm" variant="secondary" className="ml-1 shrink-0" onClick={() => setShowResults(false)}>
+            <ArrowLeft size={14} aria-hidden /> Back to {view === 'data' ? 'data' : 'structure'}
+          </Button>
+        ) : (
+          <Segmented label="View" value={view} onChange={setView} options={[{ value: 'data', label: 'Data' }, { value: 'structure', label: 'Structure' }]} className="ml-1 shrink-0" />
+        )}
+
+        {view === 'data' && !showResults ? (
+          <form onSubmit={(e) => (e.preventDefault(), applyFilter(whereInput))}
+            className={cn('mx-1 flex h-8 min-w-40 flex-1 items-center rounded-lg border bg-background transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15', where && 'border-primary/50')}>
+            <span className="flex h-full items-center rounded-l-lg border-r bg-muted/60 px-2.5 font-mono text-[11px] font-semibold text-muted-foreground">WHERE</span>
+            <input
+              ref={filterRef}
+              value={whereInput}
+              onChange={(e) => setWhereInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && whereInput && (e.stopPropagation(), applyFilter(''))}
+              placeholder="status = 'active' AND total > 100"
+              aria-label="Filter rows with a SQL condition"
+              spellCheck={false}
+              className="h-full min-w-0 flex-1 bg-transparent px-2.5 font-mono text-[12.5px] outline-none placeholder:text-muted-foreground/70"
+            />
+            {whereInput && (
+              <button type="button" onClick={() => applyFilter('')} aria-label="Clear filter" className="mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><X size={13} /></button>
+            )}
+            <button type="submit" className={cn('mr-1 h-6 shrink-0 rounded-md px-2 text-xs font-medium transition', whereInput !== where ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
+              {where && whereInput === where ? 'Filtered' : 'Apply'}
+            </button>
+          </form>
+        ) : (
+          <div className="flex-1" />
+        )}
+
+        <div className="flex shrink-0 items-center gap-0.5">
+          {view === 'data' && !showResults && (
+            <>
+              {loading && showSpinner ? (
+                <Button size="sm" variant="ghost" onClick={() => api.cancel(loading)}>
+                  <Spinner size={13} className="text-primary" /> <Square size={10} className="fill-current text-destructive" aria-hidden /> Stop
+                </Button>
+              ) : (
+                <Tooltip content="Reload (Alt+R)">
+                  <button onClick={load} aria-label="Reload" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><RefreshCw size={15} /></button>
+                </Tooltip>
+              )}
+              {canEdit && (
+                <>
+                  <Tooltip content="Add row">
+                    <Button size="sm" variant="ghost" aria-label="Add row" onClick={() => setInserts((l) => [...l, {}])}><Plus size={14} aria-hidden /><span className="hidden xl:inline">Add row</span></Button>
+                  </Tooltip>
+                  <Tooltip content="Delete selected rows (Del)">
+                    <Button size="sm" variant="ghost" aria-label={`Delete ${selected.size} selected rows`} onClick={() => deleteRows([...selected])} disabled={selected.size === 0}>
+                      <Trash2 size={14} aria-hidden /><span className="hidden xl:inline">Delete</span>{selected.size > 0 && <span>{selected.size}</span>}
+                    </Button>
+                  </Tooltip>
+                </>
+              )}
+            </>
+          )}
           {!canEdit && data && (
             <Tooltip content={conn.readOnly ? 'This connection is read-only.' : 'This table has no primary key, so rows cannot be edited safely.'}>
               <span className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"><Lock size={12} aria-hidden /> Read-only</span>
@@ -191,53 +259,14 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
         </div>
       </div>
 
-      {view === 'structure' ? (
+      {showResults ? (
+        <div className="min-h-0 flex-1">
+          <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running} />
+        </div>
+      ) : view === 'structure' ? (
         <Structure conn={conn} tab={tab} version={version} />
       ) : (
         <>
-          {/* Filter + actions */}
-          <div className="flex h-12 shrink-0 items-center gap-2 border-b bg-sidebar/50 px-3">
-            <form onSubmit={(e) => (e.preventDefault(), applyFilter(whereInput))} className="flex h-8 max-w-2xl flex-1 items-center rounded-lg border bg-background transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15">
-              <span className="flex h-full items-center rounded-l-lg border-r bg-muted/60 px-2.5 font-mono text-[11px] font-semibold text-muted-foreground">WHERE</span>
-              <input
-                ref={filterRef}
-                value={whereInput}
-                onChange={(e) => setWhereInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Escape' && whereInput && (e.stopPropagation(), applyFilter(''))}
-                placeholder="status = 'active' AND total > 100"
-                aria-label="Filter rows with a SQL condition"
-                spellCheck={false}
-                className="h-full min-w-0 flex-1 bg-transparent px-2.5 font-mono text-[12.5px] outline-none placeholder:text-muted-foreground/70"
-              />
-              {whereInput && (
-                <button type="button" onClick={() => applyFilter('')} aria-label="Clear filter" className="mr-1 flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><X size={13} /></button>
-              )}
-              <button type="submit" className={cn('mr-1 h-6 rounded-md px-2 text-xs font-medium transition', whereInput !== where ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>Apply</button>
-            </form>
-            {where && <span className="hidden text-xs font-medium text-primary md:inline">Filtered</span>}
-
-            <div className="ml-auto flex items-center gap-1">
-              {loading && showSpinner ? (
-                <Button size="sm" variant="ghost" onClick={() => api.cancel(loading)}>
-                  <Spinner size={13} className="text-primary" /> <Square size={10} className="fill-current text-destructive" aria-hidden /> Stop
-                </Button>
-              ) : (
-                <Tooltip content="Reload (Alt+R)">
-                  <button onClick={load} aria-label="Reload" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"><RefreshCw size={15} /></button>
-                </Tooltip>
-              )}
-              {canEdit && (
-                <>
-                  <span className="mx-1 h-5 w-px bg-border" aria-hidden />
-                  <Button size="sm" variant="ghost" onClick={() => setInserts((l) => [...l, {}])}><Plus size={14} aria-hidden /> Add row</Button>
-                  <Button size="sm" variant="ghost" onClick={() => deleteRows([...selected])} disabled={selected.size === 0}>
-                    <Trash2 size={14} aria-hidden /> Delete{selected.size > 0 ? ` ${selected.size}` : ''}
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
           {/* Grid */}
           <div className="relative min-h-0 flex-1">
             {error ? (
@@ -298,6 +327,19 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
         </>
       )}
 
+      <QueryComposer
+        value={tab.sql ?? ''}
+        onChange={(sql) => updateTab(tab.id, { sql })}
+        onRun={(sql) => (setShowResults(true), runner.run(sql))}
+        onStop={runner.stop}
+        running={!!runner.running}
+        dialect={conn.driver}
+        schema={completion}
+        scopeLabel={conn.driver === 'sqlite' ? conn.name : schema}
+        elapsed={elapsed}
+        placeholder={`Query ${table}… e.g. SELECT * FROM ${table} WHERE …`}
+      />
+      {runner.confirmDialog}
       <ReviewDialog statements={review} production={!!conn.production} onClose={() => setReview(undefined)} onSave={save} />
     </div>
   )

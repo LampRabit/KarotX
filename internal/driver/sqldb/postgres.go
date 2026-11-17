@@ -114,7 +114,8 @@ func (postgres) columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]d
 		SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
 		       pg_get_expr(d.adbin, d.adrelid),
 		       EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = a.attrelid AND i.indisprimary AND a.attnum = ANY(i.indkey)),
-		       a.attidentity <> '' OR COALESCE(pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%'
+		       a.attidentity <> '' OR COALESCE(pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%',
+		       (SELECT conname FROM pg_constraint WHERE conrelid = c.oid AND contype = 'p')
 		FROM pg_attribute a
 		JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
 		LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum

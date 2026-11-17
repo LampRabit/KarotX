@@ -15,6 +15,9 @@ func TestSplitSQL(t *testing.T) {
 		"select 'it''s;'; select 2":                   {"select 'it''s;'", "select 2"},
 		"  ;; -- only comment":                        nil,
 		"select d #> '{a}'; select 2":                 {"select d #> '{a}'", "select 2"},
+		"CREATE TRIGGER t AFTER INSERT ON x BEGIN UPDATE y SET a = CASE WHEN 1 THEN 2 END; DELETE FROM z; END; select 1": {
+			"CREATE TRIGGER t AFTER INSERT ON x BEGIN UPDATE y SET a = CASE WHEN 1 THEN 2 END; DELETE FROM z; END", "select 1"},
+		"BEGIN; select 1; COMMIT": {"BEGIN", "select 1", "COMMIT"},
 	}
 	for in, want := range cases {
 		if got := SplitSQL(in, false); !reflect.DeepEqual(got, want) {

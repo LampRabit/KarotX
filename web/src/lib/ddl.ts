@@ -57,42 +57,132 @@ export function createTable(d: DriverName, schema: string, name: string, cols: D
   return [`CREATE TABLE ${qualify(d, schema, name)} (\n${lines.join(',\n')}\n)`]
 }
 
-/** ALTER statements turning `before` into `after`. Returns warnings for changes a dialect can't do. */
-export function alterTable(d: DriverName, schema: string, table: string, newName: string, before: ColumnInfo[], after: DesignColumn[]) {
+/** An index or trigger that belongs to a SQLite table (from sqlite_master). */
+export type SqliteObject = { type: string; name: string; sql: string }
+
+const changedCol = (b: ColumnInfo, c: DesignColumn) => ({
+  type: c.type.trim().toLowerCase() !== b.type.toLowerCase(),
+  nullable: c.nullable !== b.nullable,
+  default: !c.autoIncrement && c.default.trim() !== (b.default ?? ''),
+})
+
+/**
+ * Statements turning `before` into `after`. Primary-key changes are
+ * supported everywhere; on SQLite, changes it can't ALTER in place (type,
+ * NULL, default, key, order) use the documented table rebuild.
+ */
+export function alterTable(
+  d: DriverName, schema: string, table: string, newName: string,
+  before: ColumnInfo[], after: DesignColumn[], sqliteObjects: SqliteObject[] = [],
+) {
   const stmts: string[] = []
   const warnings: string[] = []
+  const notes: string[] = []
   const t = qualify(d, schema, table)
+  const finalName = newName.trim() || table
+  const nameOf = (orig: string) => after.find((c) => c.orig === orig)?.name // undefined = dropped
   const kept = new Set(after.filter((c) => c.orig).map((c) => c.orig))
+  const beforePk = before.filter((b) => b.primaryKey).map((b) => nameOf(b.name) ?? '')
+  const afterPk = after.filter((c) => c.primaryKey).map((c) => c.name)
+  const pkChanged = beforePk.join('\u0000') !== afterPk.join('\u0000')
+
+  if (d === 'sqlite') {
+    const existing = after.filter((c) => c.orig)
+    const order = before.map((b) => b.name).filter((n) => kept.has(n))
+    const needsRebuild =
+      pkChanged ||
+      existing.some((c, i) => order[i] !== c.orig) ||
+      existing.some((c) => {
+        const ch = changedCol(before.find((b) => b.name === c.orig)!, c)
+        return ch.type || ch.nullable || ch.default || c.autoIncrement !== before.find((b) => b.name === c.orig)!.autoIncrement
+      }) ||
+      after.some((c) => !c.orig && (c.primaryKey || (!c.nullable && !c.default.trim())))
+    const dropped = before.map((b) => b.name).filter((n) => !kept.has(n))
+    if (needsRebuild) return { ...sqliteRebuild(table, finalName, after, sqliteObjects, dropped), notes: ['SQLite can’t change these columns in place, so KarotX rebuilds the table: your rows are copied into a new table with the new structure, all in one transaction. Indexes and triggers are recreated.'] }
+  }
+
+  const dropPk = pkChanged && before.some((b) => b.primaryKey)
+  const addPk = pkChanged && afterPk.length > 0
+
+  // MySQL/MariaDB: one ALTER TABLE with every clause, so constraints are checked
+  // against the final shape (an AUTO_INCREMENT column must stay keyed, key
+  // columns can't allow NULL, etc.).
+  if (d === 'mysql') {
+    const clauses: string[] = []
+    if (dropPk) clauses.push('DROP PRIMARY KEY')
+    for (const b of before) if (!kept.has(b.name)) clauses.push(`DROP COLUMN ${q(d, b.name)}`)
+    for (const c of after) {
+      const def = columnDef(d, { ...c, primaryKey: false }, false)
+      if (!c.orig) {
+        clauses.push(`ADD COLUMN ${def}`)
+        continue
+      }
+      const b = before.find((x) => x.name === c.orig)!
+      const ch = changedCol(b, c)
+      const modified = ch.type || ch.nullable || ch.default || c.autoIncrement !== b.autoIncrement
+      if (modified) clauses.push(c.name !== c.orig ? `CHANGE COLUMN ${q(d, c.orig)} ${def}` : `MODIFY COLUMN ${def}`)
+      else if (c.name !== c.orig) clauses.push(`RENAME COLUMN ${q(d, c.orig)} TO ${q(d, c.name)}`)
+    }
+    if (addPk) clauses.push(`ADD PRIMARY KEY (${afterPk.map((n) => q(d, n)).join(', ')})`)
+    if (clauses.length) stmts.push(`ALTER TABLE ${t}\n  ${clauses.join(',\n  ')}`)
+    if (finalName !== table) stmts.push(`RENAME TABLE ${t} TO ${qualify(d, schema, finalName)}`)
+    return { stmts, warnings, notes }
+  }
+
+  // Postgres (and simple SQLite changes): drop the old key first so column
+  // changes (e.g. allowing NULL) aren't blocked by it; add the new key last.
+  if (dropPk) {
+    const name = before.find((b) => b.primaryKey)?.primaryKeyName || `${table}_pkey`
+    stmts.push(`ALTER TABLE ${t} DROP CONSTRAINT ${q(d, name)}`)
+  }
 
   for (const b of before) if (!kept.has(b.name)) stmts.push(`ALTER TABLE ${t} DROP COLUMN ${q(d, b.name)}`)
 
   for (const c of after) {
     if (!c.orig) {
       stmts.push(`ALTER TABLE ${t} ADD COLUMN ${columnDef(d, { ...c, primaryKey: false }, false)}`)
-      if (c.primaryKey) warnings.push(`"${c.name}" was added without a primary key; change primary keys with SQL.`)
       continue
     }
     const b = before.find((x) => x.name === c.orig)!
     if (c.name !== c.orig) stmts.push(`ALTER TABLE ${t} RENAME COLUMN ${q(d, c.orig)} TO ${q(d, c.name)}`)
     const col = q(d, c.name)
-    const typeChanged = c.type.trim().toLowerCase() !== b.type.toLowerCase()
-    const nullChanged = c.nullable !== b.nullable
-    const defChanged = !c.autoIncrement && c.default.trim() !== (b.default ?? '')
-    if (!typeChanged && !nullChanged && !defChanged) continue
-    if (d === 'sqlite') {
-      warnings.push(`SQLite can't change the type, NULL or default of "${c.name}". Recreate the table to do that.`)
-    } else if (d === 'mysql') {
-      stmts.push(`ALTER TABLE ${t} MODIFY COLUMN ${columnDef(d, { ...c, primaryKey: false }, false)}`)
-    } else {
-      if (typeChanged) stmts.push(`ALTER TABLE ${t} ALTER COLUMN ${col} TYPE ${c.type} USING ${col}::${c.type}`)
-      if (nullChanged) stmts.push(`ALTER TABLE ${t} ALTER COLUMN ${col} ${c.nullable ? 'DROP' : 'SET'} NOT NULL`)
-      if (defChanged) stmts.push(`ALTER TABLE ${t} ALTER COLUMN ${col} ${c.default.trim() ? 'SET DEFAULT ' + c.default.trim() : 'DROP DEFAULT'}`)
-    }
+    const ch = changedCol(b, c)
+    if (ch.type) stmts.push(`ALTER TABLE ${t} ALTER COLUMN ${col} TYPE ${c.type} USING ${col}::${c.type}`)
+    if (ch.nullable) stmts.push(`ALTER TABLE ${t} ALTER COLUMN ${col} ${c.nullable ? 'DROP' : 'SET'} NOT NULL`)
+    if (ch.default) stmts.push(`ALTER TABLE ${t} ALTER COLUMN ${col} ${c.default.trim() ? 'SET DEFAULT ' + c.default.trim() : 'DROP DEFAULT'}`)
   }
 
-  if (newName && newName !== table) {
-    stmts.push(d === 'mysql' ? `RENAME TABLE ${t} TO ${qualify(d, schema, newName)}` : `ALTER TABLE ${t} RENAME TO ${q(d, newName)}`)
+  if (addPk) stmts.push(`ALTER TABLE ${t} ADD PRIMARY KEY (${afterPk.map((n) => q(d, n)).join(', ')})`)
+  if (finalName !== table) stmts.push(`ALTER TABLE ${t} RENAME TO ${q(d, finalName)}`)
+  return { stmts, warnings, notes }
+}
+
+/** SQLite's documented 12-step table rebuild, in one transaction. */
+function sqliteRebuild(table: string, finalName: string, after: DesignColumn[], objects: SqliteObject[], dropped: string[]) {
+  const d: DriverName = 'sqlite'
+  const warnings: string[] = []
+  const tmp = `_kx_new_${table}`
+  const kept = after.filter((c) => c.orig)
+  // Old column names that no longer exist (dropped or renamed).
+  const lostNames = [...dropped, ...kept.filter((c) => c.orig !== c.name).map((c) => c.orig!)]
+  const stmts = [
+    'PRAGMA foreign_keys = OFF',
+    'PRAGMA legacy_alter_table = ON',
+    'BEGIN',
+    createTable(d, '', tmp, after)[0],
+    // A column that becomes NOT NULL with a default gets that default where the old value was NULL.
+    kept.length ? `INSERT INTO ${q(d, tmp)} (${kept.map((c) => q(d, c.name)).join(', ')}) SELECT ${kept.map((c) => (!c.nullable && c.default.trim() ? `COALESCE(${q(d, c.orig!)}, ${c.default.trim()})` : q(d, c.orig!))).join(', ')} FROM ${q(d, table)}` : '',
+    `DROP TABLE ${q(d, table)}`,
+    `ALTER TABLE ${q(d, tmp)} RENAME TO ${q(d, table)}`,
+  ].filter(Boolean)
+  for (const o of objects) {
+    const uses = (name: string) => new RegExp(`(^|[^\\w])["\`\\[]?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["\`\\]]?([^\\w]|$)`, 'i').test(o.sql)
+    const missing = lostNames.filter(uses)
+    if (missing.length) warnings.push(`The ${o.type} "${o.name}" uses ${missing.map((m) => `"${m}"`).join(', ')}, which is renamed or removed, so it won't be recreated. Recreate it with SQL afterwards.`)
+    else stmts.push(o.sql)
   }
+  stmts.push('COMMIT', 'PRAGMA legacy_alter_table = OFF', 'PRAGMA foreign_keys = ON')
+  if (finalName !== table) stmts.push(`ALTER TABLE ${q(d, table)} RENAME TO ${q(d, finalName)}`)
   return { stmts, warnings }
 }
 
