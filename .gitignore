@@ -1,0 +1,13 @@
+# build output
+/karotx
+/karotx.exe
+/dist/
+web/dist/*
+!web/dist/.gitkeep
+web/node_modules/
+
+# local state files
+*.state
+
+.DS_Store
+*.tsbuildinfo

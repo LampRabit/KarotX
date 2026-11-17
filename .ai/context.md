@@ -1,0 +1,25 @@
+# KarotX — product context
+
+**KarotX** is a database client that ships as a single binary. You start it from a terminal (like mailpit) and use it in the browser.
+It ships under the **LampRabit** namespace and brand. It will later be bundled into LampRabit as a service, and it is also published standalone so anyone can use it.
+
+## Core requirements
+
+1. **Many connections at once, no lag.** Each connection is isolated: its own pool, its own cancellation, and no global locks on the query path. A slow query on one database never blocks another.
+2. **Many database types:**
+   - **MVP:** PostgreSQL, MySQL, MariaDB, SQLite, Redis, MongoDB.
+   - **Later:** ClickHouse, Neo4j, Memcached, DynamoDB.
+3. **Cloud and local.** Supabase, Neon and CockroachDB connect over the Postgres wire protocol. PlanetScale and TiDB connect over the MySQL protocol. They appear as *presets* on those drivers. DynamoDB has its own driver.
+4. **Persistent state.** The state file is passed on the CLI and defaults to `./karotx.state` in the current directory. It restores **connections and open tabs** only.
+   - The file is encrypted (AES-256-GCM). The key lives in the OS keychain.
+   - DB passwords and SSH secrets live in the **OS keychain**, never in the file.
+5. **SSH tunnels** for any network driver.
+6. **Server:** binds to `0.0.0.0` on a reserved default port. Both are changeable with CLI flags. An optional password protects the UI.
+7. **UI first.** It must be beautiful and obvious enough for a newcomer, and powerful enough that most work happens without typing queries by hand.
+8. **Query Commander.** A visual query builder, mainly for relational DBs: pick tables, columns, joins, filters, grouping and sorting. It produces live, editable SQL.
+9. **Themeable.** Each theme has a light and a dark variant. Select a theme with `--theme`; otherwise it comes from the state file. Theming is structurally ready from day one, and the themes themselves come later.
+10. **Logo** is in progress. Use a simple placeholder icon until it's ready, then align the default theme to it.
+
+## Non-goals (for now)
+- Multi-user accounts or roles.
+- A desktop wrapper (Electron/Wails). The browser UI is the product.
