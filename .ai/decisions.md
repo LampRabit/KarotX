@@ -44,5 +44,5 @@ Newest at the bottom. Format: **date — decision.** Why.
   - The SQL splitter keeps `CREATE TRIGGER … BEGIN … END` bodies intact.
 - **2026-11-18 — MySQL column defaults are normalised server-side to SQL expressions.** MariaDB returns 'NULL' for "no default"; MySQL returns string literals unquoted.
 - **2026-11-18 — New SQLite files** are created by the server (`POST /api/fs/sqlite`), never overwriting an existing file.
-- **2026-11-18 — Every table tab has the bottom query box too** (scoped to its database). The table toolbar is a single row: name, Data/Structure, WHERE filter, actions; action labels collapse to icons on narrow windows.
+- **2026-11-18 — The bottom query box is in every tab type** (database, table and query), scoped to the tab's database. Query tabs show results above it, and the box can grow taller there. The table toolbar is a single row: name, Data/Structure, WHERE filter, actions; action labels collapse to icons on narrow windows.
 - **2026-11-18 — Avoid horizontal scrolling** (owner preference). Layouts use shrinkable tracks (`minmax(0, …)`), and the grid is the only place where sideways scrolling is expected.

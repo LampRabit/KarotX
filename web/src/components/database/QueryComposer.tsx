@@ -19,6 +19,9 @@ type Props = {
   scopeLabel: string
   elapsed: number
   placeholder?: string
+  /** Max height (px) before the box scrolls; the expand button and drag handle can change it. */
+  initialMaxHeight?: number
+  autoFocus?: boolean
 }
 
 /**
@@ -28,8 +31,9 @@ type Props = {
  */
 export function QueryComposer(p: Props) {
   const ref = useRef<ReactCodeMirrorRef>(null)
-  const [maxH, setMaxH] = useState(200)
-  const big = maxH > 320
+  const base = p.initialMaxHeight ?? 200
+  const [maxH, setMaxH] = useState(base)
+  const big = maxH > Math.max(320, base)
 
   function drag(e: React.PointerEvent) {
     e.preventDefault()
@@ -65,11 +69,12 @@ export function QueryComposer(p: Props) {
               onRun={run}
               compact={{ minHeight: big ? `${maxH}px` : '26px', maxHeight: `${maxH}px` }}
               placeholder={p.placeholder ?? `Type SQL to run in ${p.scopeLabel}…`}
+              autoFocus={p.autoFocus}
             />
           </div>
           <Tooltip content={big ? 'Shrink' : 'Expand'}>
             <button
-              onClick={() => setMaxH(big ? 200 : Math.round(window.innerHeight * 0.55))}
+              onClick={() => setMaxH(big ? base : Math.round(window.innerHeight * 0.6))}
               aria-label={big ? 'Shrink query box' : 'Expand query box'}
               className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
             >

@@ -36,7 +36,7 @@ const compactTheme = EditorView.theme({
   '&': { backgroundColor: 'transparent', fontSize: '14px' },
   '.cm-content': { padding: '4px 0' },
   '.cm-line': { padding: '0 2px' },
-  '.cm-scroller': { overflow: 'auto' },
+  '.cm-scroller': { overflow: 'auto', scrollbarWidth: 'thin' },
 })
 
 type Props = {
