@@ -1,0 +1,49 @@
+# GoReleaser config: one self-contained binary per platform, UI embedded.
+# Release: push a tag like v0.1.0 (see .github/workflows/release.yml).
+# Local dry run: goreleaser release --snapshot --clean
+version: 2
+project_name: karotx
+
+before:
+  hooks:
+    - pnpm -C web install --frozen-lockfile
+    - pnpm -C web build
+
+builds:
+  - id: karotx
+    main: ./cmd/karotx
+    binary: karotx
+    env:
+      - CGO_ENABLED=0 # pure Go everywhere (SQLite via modernc), so cross-compiling just works
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: karotx
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [README.md]
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^chore:", "^Merge "]
+
+release:
+  github:
+    owner: LampRabit
+    name: KarotX
+  draft: false
+  prerelease: auto # v0.x.y-rc1 etc. are marked as pre-releases

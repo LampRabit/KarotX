@@ -36,3 +36,19 @@ pnpm -C web build && go build -o karotx ./cmd/karotx   # full binary
 go run ./cmd/karotx --no-open
 pnpm -C web dev                                        # http://localhost:5173, proxies /api
 ```
+
+## Release
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request:
+- Builds the UI.
+- Runs `gofmt`, `go vet` and `go test -race`.
+- Does a full **release dry run** that cross-compiles every platform without publishing.
+
+To publish a release, push a version tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+`.github/workflows/release.yml` then runs GoReleaser (`.goreleaser.yaml`). It builds single self-contained binaries for Windows, macOS and Linux (amd64 and arm64) with the UI embedded, and attaches them to a GitHub Release together with `checksums.txt`. Tags with a suffix such as `v0.2.0-rc1` are marked as pre-releases.
