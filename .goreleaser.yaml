@@ -45,5 +45,5 @@ release:
   github:
     owner: LampRabit
     name: KarotX
-  draft: false
+  draft: true # the owner reviews the assets and publishes the release manually
   prerelease: auto # v0.x.y-rc1 etc. are marked as pre-releases

@@ -46,9 +46,9 @@ Newest at the bottom. Format: **date — decision.** Why.
 - **2026-11-18 — New SQLite files** are created by the server (`POST /api/fs/sqlite`), never overwriting an existing file.
 - **2026-11-18 — The bottom query box is in every tab type** (database, table and query), scoped to the tab's database. Query tabs show results above it, and the box can grow taller there. The table toolbar is a single row: name, Data/Structure, WHERE filter, actions; action labels collapse to icons on narrow windows.
 - **2026-11-18 — Avoid horizontal scrolling** (owner preference). Layouts use shrinkable tracks (`minmax(0, …)`), and the grid is the only place where sideways scrolling is expected.
-- **2026-11-18 — Releases via GitHub Actions + GoReleaser.**
+- **2026-11-18 — Releases via GitHub Actions + GoReleaser; tagged releases start as drafts for manual publication.**
   - CI runs on push and PR: UI build, gofmt, vet, `test -race`, and a `goreleaser --snapshot` dry run.
-  - Pushing a `v*` tag publishes a GitHub Release with archives for linux/darwin/windows × amd64/arm64 (CGO off) and checksums.
+  - Pushing a `v*` tag creates a draft GitHub Release with archives for linux/darwin/windows × amd64/arm64 (CGO off) and checksums. The owner publishes it manually after review.
   - The version is injected with `-X main.version`.
   - The owner will protect `main` once development settles, so CI must stay green.
 - **2026-11-21 — UI first, query second** is the guiding principle (owner directive). Every task must work through the UI, and SQL or command input is the fallback, never the primary path. Recorded in context.md and README rule 0.
