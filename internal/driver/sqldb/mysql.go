@@ -163,3 +163,11 @@ func (mysqlDialect) columns(ctx context.Context, db *sql.DB, t driver.TableRef) 
 }
 
 func (mysqlDialect) databases(context.Context, *sql.DB) ([]string, error) { return nil, nil }
+
+func (mysqlDialect) foreignKeys(ctx context.Context, db *sql.DB, schema string) (*sql.Rows, error) {
+	return db.QueryContext(ctx, `
+		SELECT constraint_name, table_name, column_name, referenced_table_name, referenced_column_name
+		FROM information_schema.key_column_usage
+		WHERE table_schema = ? AND referenced_table_name IS NOT NULL AND referenced_table_schema = table_schema
+		ORDER BY constraint_name, table_name, ordinal_position`, schema)
+}

@@ -1,7 +1,7 @@
 # Progress
 
 ## Status
-**Phase 1 complete** (2026-11-21), all caveats closed. Next: Phase 2 (Query Commander, built UI-first).
+**Phase 2 (Query Commander) complete** (2026-11-21). Next: Phase 3 (Redis).
 
 ## Done
 - Requirements gathered (see context.md, decisions.md).
@@ -63,10 +63,20 @@
   - Expanded sidebar folders are saved in the workspace and restored (they reconnect and load on start).
   - Live tests run with `KAROTX_IT_PG` / `KAROTX_IT_MYSQL` (see README → Develop).
 
+- Phase 2: Query Commander (UI first).
+  - Backend: `ForeignKeys(schema)` for Postgres, MySQL/MariaDB and SQLite, served at `GET /api/connections/{id}/foreignkeys`.
+  - `web/src/lib/commander.ts` is the model and SQL generator: filters → WHERE, joins, columns, group by + metrics, sort, limit, and FK join suggestions. It is unit-tested in `web/test` (`pnpm -C web test`, run in CI).
+  - Query tabs open in **Builder** mode. The steps are Data → Join (FK suggestions) → Columns → Filter → Summarize → Sort & limit. Live SQL appears beside the steps, with Copy, Edit as SQL and Run. The builder state is saved with the tab.
+  - Table tabs use the visual filter chips (`FilterBar`). A SQL toggle switches to raw WHERE. Grid "Filter by value" adds a chip. Ctrl+F opens the filter from anywhere.
+  - "Build a query" entry points: the database view header, table cards, the table menu and the tree's right-click menu.
+  - Verified:
+    - Unit tests (generator, SQLite FKs including composite keys).
+    - A Playwright walkthrough on SQLite: the builder's result equals hand-written SQL, and the chip filter works.
+    - Live FK discovery and builder SQL on Postgres 18, MariaDB 12 and MySQL 26.
+
 ## Next
-- Phase 2: Query Commander, UI-first.
-  - A visual builder (tables, columns, FK-aware joins, filters, grouping, sorting) with live, editable SQL as the second view.
-  - The same filter builder replaces the raw WHERE box as the table filter's main mode (raw WHERE stays as an option).
+- Phase 3: Redis (key browser with type-aware views, TTL, command console), UI first.
+- Possible Commander follow-ups: self-joins (table aliases), date-part grouping (by day/month), and value pickers that suggest distinct values.
 
 ## Open questions
 None right now.

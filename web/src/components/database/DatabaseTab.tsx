@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronDown, Copy, Database, Eraser, Eye, FileCode2, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Table2, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Copy, Database, Eraser, Eye, FileCode2, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Table2, Trash2, Wand2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
 import { api, type ConnView, type TableInfo } from '@/lib/api'
@@ -7,6 +7,7 @@ import { track } from '@/lib/activity'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
 import { containerName, selectSql } from '@/lib/ddl'
+import { emptyCommander } from '@/lib/commander'
 import { openDialog } from '@/lib/dialogs'
 import { treeKey, useWorkspace, type Tab } from '@/lib/workspace'
 import { BrandIcon } from '../BrandIcon'
@@ -27,7 +28,7 @@ export const fmtBytes = (n?: number) =>
   n === undefined ? '' : n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`
 
 /** Postgres: the server's databases (top of the tree). Other drivers: none. */
-function useServerDatabases(conn: ConnView) {
+export function useServerDatabases(conn: ConnView) {
   const root = useWorkspace((s) => s.trees[treeKey(conn.id, [])])
   const loadTree = useWorkspace((s) => s.loadTree)
   useEffect(() => void loadTree(conn.id, []), [conn.id, loadTree])
@@ -36,7 +37,7 @@ function useServerDatabases(conn: ConnView) {
 }
 
 /** Schema-level containers: Postgres schemas (of `database`), MySQL databases, SQLite "main". */
-function useContainers(conn: ConnView, database?: string) {
+export function useContainers(conn: ConnView, database?: string) {
   const path = database ? [database] : []
   const entry = useWorkspace((s) => s.trees[treeKey(conn.id, path)])
   const loadTree = useWorkspace((s) => s.loadTree)
@@ -46,14 +47,14 @@ function useContainers(conn: ConnView, database?: string) {
   return { names: nodes.map((n) => n.name), loading: !entry?.nodes }
 }
 
-function defaultSchema(conn: ConnView, names: string[]) {
+export function defaultSchema(conn: ConnView, names: string[]) {
   if (conn.driver === 'sqlite') return 'main'
   if (conn.driver === 'mysql' && conn.database && names.includes(conn.database)) return conn.database
   if (names.includes('public')) return 'public'
   return names[0]
 }
 
-function Picker({ label, value, items, onPick, newLabel, onNew, placeholder }: {
+export function Picker({ label, value, items, onPick, newLabel, onNew, placeholder }: {
   label: string; value?: string; items: string[]; onPick: (v: string) => void; newLabel?: string; onNew?: () => void; placeholder: string
 }) {
   return (
@@ -194,6 +195,11 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
           {showResults && (
             <Button size="sm" variant="ghost" onClick={() => openQuery(conn.id, '', schema, database)}><FileCode2 size={14} aria-hidden /> Open editor</Button>
           )}
+          {schema && (
+            <Button size="sm" variant="secondary" onClick={() => openQuery(conn.id, '', schema, database, emptyCommander())}>
+              <Wand2 size={14} aria-hidden /> Build a query
+            </Button>
+          )}
           {schema && !conn.readOnly && (
             <Button size="sm" onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, database })}>
               <Plus size={14} aria-hidden /> New table
@@ -249,6 +255,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                       <>
                         <CtxLabel>{t.name}</CtxLabel>
                         <CtxItem icon={<Table2 />} onSelect={() => openTable(conn.id, ref(t))} shortcut="Enter">Open data</CtxItem>
+                        <CtxItem icon={<Wand2 />} onSelect={() => openQuery(conn.id, '', schema, database, emptyCommander(t.name))}>Build a query</CtxItem>
                         <CtxItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, t.name), schema, database)}>Query in editor</CtxItem>
                         <CtxItem icon={<Copy />} onSelect={() => navigator.clipboard.writeText(t.name).then(() => toast.success('Copied name', { duration: 1200 }))}>Copy name</CtxItem>
                         {!conn.readOnly && t.kind === 'table' && (

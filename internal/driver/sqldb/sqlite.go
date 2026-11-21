@@ -95,3 +95,12 @@ func CreateSQLiteFile(path string) error {
 }
 
 func (sqlite) databases(context.Context, *sql.DB) ([]string, error) { return nil, nil }
+
+// SQLite foreign keys have no names; "<table>#<id>" identifies each one.
+func (sqlite) foreignKeys(ctx context.Context, db *sql.DB, _ string) (*sql.Rows, error) {
+	return db.QueryContext(ctx, `
+		SELECT m.name || '#' || f.id, m.name, f."from", f."table", COALESCE(f."to", '')
+		FROM sqlite_master m JOIN pragma_foreign_key_list(m.name) f
+		WHERE m.type = 'table'
+		ORDER BY m.name, f.id, f.seq`)
+}

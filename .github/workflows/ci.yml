@@ -37,6 +37,9 @@ jobs:
           pnpm -C web install --frozen-lockfile
           pnpm -C web build
 
+      - name: UI unit tests
+        run: pnpm -C web test
+
       - name: Go format check
         run: test -z "$(gofmt -l cmd internal web)" || (gofmt -l cmd internal web && exit 1)
 

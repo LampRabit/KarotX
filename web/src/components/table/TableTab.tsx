@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight, Eraser, FileCode2, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Table2, Trash2, Undo2, X } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Code2, Eraser, FileCode2, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Table2, Trash2, Undo2, Wand2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
 import { api, ApiError, newId, type Change, type ColumnInfo, type ConnView, type Result, type Value } from '@/lib/api'
@@ -10,6 +10,8 @@ import { openDialog } from '@/lib/dialogs'
 import { useDelayed } from '@/lib/hooks'
 import { useWorkspace, type Tab } from '@/lib/workspace'
 import { DataGrid, display } from '../grid/DataGrid'
+import { FilterBar, type Field } from '../builder/FilterBar'
+import { emptyCommander, whereSql, type ColRef, type Filter } from '@/lib/commander'
 import { QueryComposer } from '../database/QueryComposer'
 import { useSchema } from '../query/QueryTab'
 import { ErrorPanel, Results } from '../query/Results'
@@ -38,6 +40,10 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
   const [sort, setSort] = useState<{ column: string; desc: boolean }>()
   const [whereInput, setWhereInput] = useState('')
   const [where, setWhere] = useState('')
+  // UI first: filters are chips; raw SQL WHERE is the alternative mode.
+  const [filterMode, setFilterMode] = useState<'visual' | 'sql'>('visual')
+  const [filters, setFilters] = useState<Filter[]>([])
+  const [match, setMatch] = useState<'all' | 'any'>('all')
   const [edits, setEdits] = useState<Map<number, Record<string, Value>>>(new Map())
   const [deleted, setDeleted] = useState<Set<number>>(new Set())
   const [inserts, setInserts] = useState<Record<string, Value>[]>([])
@@ -148,27 +154,68 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
     setWhere(w)
   }
 
-  const filterBy = (column: string, value: Value) =>
-    applyFilter(`${q(conn.driver, column)} ${value === null ? 'IS NULL' : `= '${display(value).replace(/'/g, "''")}'`}`)
+  const fields: Field[] = useMemo(() => columns.map((c) => ({ ref: { table, column: c.name }, type: c.type, label: c.name })), [columns, table])
+  const typeOf = useCallback((c: ColRef) => columns.find((x) => x.name === c.column)?.type ?? 'text', [columns])
+
+  // Visual filters → WHERE, applied shortly after each change.
+  useEffect(() => {
+    if (filterMode !== 'visual') return
+    const w = whereSql(conn.driver, filters, match, (c) => q(conn.driver, c.column), typeOf)
+    const t = setTimeout(() => w !== where && applyFilter(w), 250)
+    return () => clearTimeout(t)
+  }, [filters, match, filterMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ctrl+F (global shortcut) → open this tab's filter: the "+ Filter" picker, or the SQL box.
+  useEffect(() => {
+    const onFilter = (e: Event) => {
+      if ((e as CustomEvent).detail !== tab.id) return
+      setView('data')
+      setShowResults(false)
+      setTimeout(() => (filterMode === 'sql' ? filterRef.current?.focus() : document.querySelector<HTMLElement>(`#tt-${tab.id} [data-add-filter]`)?.click()))
+    }
+    window.addEventListener('kx:filter', onFilter)
+    return () => window.removeEventListener('kx:filter', onFilter)
+  }, [tab.id, filterMode])
+
+  function switchFilterMode() {
+    if (filterMode === 'visual') {
+      setWhereInput(where) // start the SQL box from the current visual filters
+      setFilterMode('sql')
+      setTimeout(() => filterRef.current?.focus())
+    } else {
+      setFilterMode('visual')
+      setFilters([])
+      applyFilter('')
+    }
+  }
+
+  // "Filter by this value" from the grid adds a chip (or extends the raw WHERE).
+  const filterBy = (column: string, value: Value) => {
+    if (filterMode === 'visual') {
+      setFilters((fs) => [...fs, { id: newId(), col: { table, column }, op: value === null ? 'null' : 'eq', value: value === null ? '' : display(value) }])
+      return
+    }
+    const cond = `${q(conn.driver, column)} ${value === null ? 'IS NULL' : `= '${display(value).replace(/'/g, "''")}'`}`
+    applyFilter(where ? `(${where}) AND ${cond}` : cond)
+  }
 
   const sortBy = (column: string) => {
     setOffset(0)
     setSort((s) => (s?.column !== column ? { column, desc: false } : !s.desc ? { column, desc: true } : undefined))
   }
 
-  // Tab-level shortcuts: Ctrl+F focuses the filter, Ctrl+S reviews changes, Alt+R reloads.
+  // Tab-level shortcuts: Ctrl+S reviews changes, Alt+R reloads. (Ctrl+F is global, see kx:filter.)
   function onKey(e: React.KeyboardEvent) {
     if ((e.target as HTMLElement).closest('.cm-editor')) return // the query box has its own keys
     const mod = e.ctrlKey || e.metaKey
-    if (mod && e.key === 'f') (e.preventDefault(), setView('data'), setTimeout(() => filterRef.current?.focus()))
-    else if (mod && e.key === 's') (e.preventDefault(), pending && openReview())
+    if (mod && e.key === 's') (e.preventDefault(), pending && openReview())
     else if (e.altKey && e.key.toLowerCase() === 'r') (e.preventDefault(), load())
   }
 
   return (
     <div className="flex h-full flex-col" onKeyDown={onKey}>
-      {/* One toolbar: table · view switch · WHERE filter · actions */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+      {/* One toolbar: table · view switch · filters · actions (wraps only when there are many filters) */}
+      <div id={`tt-${tab.id}`} className="flex min-h-12 shrink-0 items-center gap-2 border-b px-3 py-1.5">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Table2 size={16} aria-hidden /></span>
         <div className="max-w-44 min-w-0 shrink-0 leading-tight">
           <h2 className="truncate font-semibold" title={table}>{table}</h2>
@@ -185,26 +232,38 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
         )}
 
         {view === 'data' && !showResults ? (
-          <form onSubmit={(e) => (e.preventDefault(), applyFilter(whereInput))}
-            className={cn('mx-1 flex h-8 min-w-40 flex-1 items-center rounded-lg border bg-background transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15', where && 'border-primary/50')}>
-            <span className="flex h-full items-center rounded-l-lg border-r bg-muted/60 px-2.5 font-mono text-[11px] font-semibold text-muted-foreground">WHERE</span>
-            <input
-              ref={filterRef}
-              value={whereInput}
-              onChange={(e) => setWhereInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Escape' && whereInput && (e.stopPropagation(), applyFilter(''))}
-              placeholder="status = 'active' AND total > 100"
-              aria-label="Filter rows with a SQL condition"
-              spellCheck={false}
-              className="h-full min-w-0 flex-1 bg-transparent px-2.5 font-mono text-[12.5px] outline-none placeholder:text-muted-foreground/70"
-            />
-            {whereInput && (
-              <button type="button" onClick={() => applyFilter('')} aria-label="Clear filter" className="mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><X size={13} /></button>
+          <div className="mx-1 flex min-w-40 flex-1 items-center gap-1.5">
+            {filterMode === 'visual' ? (
+              <FilterBar fields={fields} filters={filters} match={match} onChange={(f, m) => (setFilters(f), setMatch(m))} dense addLabel="Filter rows" />
+            ) : (
+              <form onSubmit={(e) => (e.preventDefault(), applyFilter(whereInput))}
+                className={cn('flex h-8 min-w-0 flex-1 items-center rounded-lg border bg-background transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15', where && 'border-primary/50')}>
+                <span className="flex h-full items-center rounded-l-lg border-r bg-muted/60 px-2.5 font-mono text-[11px] font-semibold text-muted-foreground">WHERE</span>
+                <input
+                  ref={filterRef}
+                  value={whereInput}
+                  onChange={(e) => setWhereInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Escape' && whereInput && (e.stopPropagation(), applyFilter(''))}
+                  placeholder="status = 'active' AND total > 100"
+                  aria-label="Filter rows with a SQL condition"
+                  spellCheck={false}
+                  className="h-full min-w-0 flex-1 bg-transparent px-2.5 font-mono text-[12.5px] outline-none placeholder:text-muted-foreground/70"
+                />
+                {whereInput && (
+                  <button type="button" onClick={() => applyFilter('')} aria-label="Clear filter" className="mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><X size={13} /></button>
+                )}
+                <button type="submit" className={cn('mr-1 h-6 shrink-0 rounded-md px-2 text-xs font-medium transition', whereInput !== where ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
+                  {where && whereInput === where ? 'Filtered' : 'Apply'}
+                </button>
+              </form>
             )}
-            <button type="submit" className={cn('mr-1 h-6 shrink-0 rounded-md px-2 text-xs font-medium transition', whereInput !== where ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
-              {where && whereInput === where ? 'Filtered' : 'Apply'}
-            </button>
-          </form>
+            <Tooltip content={filterMode === 'visual' ? 'Write the filter as SQL instead' : 'Back to the visual filter (clears the SQL)'}>
+              <button type="button" onClick={switchFilterMode} aria-label={filterMode === 'visual' ? 'Switch to SQL filter' : 'Switch to visual filter'}
+                className={cn('ml-auto flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium transition', filterMode === 'sql' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                <Code2 size={13} aria-hidden /> SQL
+              </button>
+            </Tooltip>
+          </div>
         ) : (
           <div className="flex-1" />
         )}
@@ -245,7 +304,8 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
               <MoreHorizontal size={16} />
             </MenuTrigger>
             <MenuContent align="end">
-              <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, table), schema, database)}>Query in editor</MenuItem>
+              <MenuItem icon={<Wand2 />} onSelect={() => openQuery(conn.id, '', schema, database, emptyCommander(table))}>Build a query</MenuItem>
+              <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, table), schema, database)}>Query in SQL editor</MenuItem>
               <MenuItem icon={<RefreshCw />} onSelect={load}>Reload <Kbd className="ml-auto">Alt R</Kbd></MenuItem>
               {!conn.readOnly && (
                 <>

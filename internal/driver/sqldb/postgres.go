@@ -139,3 +139,17 @@ func (postgres) databases(ctx context.Context, db *sql.DB) ([]string, error) {
 	}
 	return out, rows.Err()
 }
+
+func (postgres) foreignKeys(ctx context.Context, db *sql.DB, schema string) (*sql.Rows, error) {
+	return db.QueryContext(ctx, `
+		SELECT c.conname, t.relname, a.attname, rt.relname, ra.attname
+		FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		JOIN pg_class rt ON rt.oid = c.confrelid
+		CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(col, refcol, pos)
+		JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.col
+		JOIN pg_attribute ra ON ra.attrelid = c.confrelid AND ra.attnum = k.refcol
+		WHERE c.contype = 'f' AND n.nspname = $1
+		ORDER BY c.conname, t.relname, k.pos`, schema)
+}

@@ -33,6 +33,8 @@ type dialect interface {
 	useSchema(schema string) string
 	// databases lists the server's databases when a connection is bound to one (nil = not applicable).
 	databases(ctx context.Context, db *sql.DB) ([]string, error)
+	// foreignKeys returns rows of (constraint, table, column, ref_table, ref_column), ordered by constraint and position.
+	foreignKeys(ctx context.Context, db *sql.DB, schema string) (*sql.Rows, error)
 }
 
 // Driver adapts a dialect to driver.Driver.
@@ -137,6 +139,29 @@ func (c *conn) Columns(ctx context.Context, t driver.TableRef) ([]driver.ColumnI
 
 func (c *conn) Databases(ctx context.Context) ([]string, error) {
 	return c.d.databases(ctx, c.db)
+}
+
+// ForeignKeys groups the dialect's (constraint, table, column, ref_table, ref_column) rows.
+func (c *conn) ForeignKeys(ctx context.Context, schema string) ([]driver.ForeignKey, error) {
+	rows, err := c.d.foreignKeys(ctx, c.db, schema)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []driver.ForeignKey{}
+	for rows.Next() {
+		var name, table, col, refTable, refCol string
+		if err := rows.Scan(&name, &table, &col, &refTable, &refCol); err != nil {
+			return nil, err
+		}
+		if n := len(out); n > 0 && out[n-1].Name == name && out[n-1].Table == table {
+			out[n-1].Columns = append(out[n-1].Columns, col)
+			out[n-1].RefColumns = append(out[n-1].RefColumns, refCol)
+			continue
+		}
+		out = append(out, driver.ForeignKey{Name: name, Table: table, Columns: []string{col}, RefTable: refTable, RefColumns: []string{refCol}})
+	}
+	return out, rows.Err()
 }
 
 func (c *conn) qualify(t driver.TableRef) string {

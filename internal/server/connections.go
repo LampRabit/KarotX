@@ -26,6 +26,7 @@ func (s *Server) routeConnections(api *http.ServeMux) {
 	api.HandleFunc("GET /api/connections/{id}/tree", a(s.tree))
 	api.HandleFunc("GET /api/connections/{id}/tables", a(s.tables))
 	api.HandleFunc("GET /api/connections/{id}/columns", a(s.columns))
+	api.HandleFunc("GET /api/connections/{id}/foreignkeys", a(s.foreignKeys))
 	api.HandleFunc("GET /api/fs", a(s.browseFS))
 	api.HandleFunc("POST /api/fs/sqlite", a(s.createSQLite))
 	api.HandleFunc("POST /api/connections/{id}/query", a(s.query))
@@ -195,6 +196,21 @@ func (s *Server) columns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, cols)
+}
+
+func (s *Server) foreignKeys(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	c, err := s.opt.Conns.SessionDB(r.Context(), r.PathValue("id"), q.Get("db"))
+	if err != nil {
+		connErr(w, err)
+		return
+	}
+	fks, err := c.ForeignKeys(r.Context(), q.Get("schema"))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, fks)
 }
 
 // guard enforces the production safety rule: destructive work on a

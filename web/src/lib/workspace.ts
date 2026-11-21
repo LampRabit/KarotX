@@ -2,10 +2,12 @@ import { create } from 'zustand'
 import { toast } from 'sonner'
 import { api, newId, type ConnView, type TableRef, type TreeNode } from './api'
 import { track } from './activity'
+import type { Commander } from './commander'
 
 export type Tab =
   | { id: string; kind: 'table'; connId: string; title: string; table: TableRef; sql?: string }
-  | { id: string; kind: 'query'; connId: string; title: string; sql: string; schema?: string; database?: string }
+  /** mode: 'builder' (Query Commander, UI first) or 'sql'. Missing on old tabs: SQL if it has text, else builder. */
+  | { id: string; kind: 'query'; connId: string; title: string; sql: string; schema?: string; database?: string; mode?: 'builder' | 'sql'; builder?: Commander }
   | { id: string; kind: 'database'; connId: string; title: string; schema?: string; database?: string; sql?: string }
 
 type TreeEntry = { nodes?: TreeNode[]; loading: boolean; error?: string }
@@ -31,7 +33,8 @@ type Workspace = {
   toggle: (key: string, open?: boolean) => void
 
   openTable: (connId: string, ref: TableRef) => void
-  openQuery: (connId: string, sql?: string, schema?: string, database?: string) => void
+  /** Opens a query tab: the visual builder unless SQL text is given. */
+  openQuery: (connId: string, sql?: string, schema?: string, database?: string, builder?: Commander) => void
   openDatabase: (connId: string, schema?: string, database?: string) => void
   closeTab: (id: string) => void
   closeTabs: (ids: string[]) => void
@@ -149,9 +152,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
   },
 
-  openQuery: (connId, sql = '', schema, database) => {
+  openQuery: (connId, sql = '', schema, database, builder) => {
     const n = get().tabs.filter((t) => t.kind === 'query').length + 1
-    const tab: Tab = { id: newId(), kind: 'query', connId, title: `Query ${n}`, sql, schema, database }
+    const mode = sql.trim() ? 'sql' : 'builder'
+    const tab: Tab = { id: newId(), kind: 'query', connId, title: `Query ${n}`, sql, schema, database, mode, builder }
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
   },
 

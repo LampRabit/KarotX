@@ -59,3 +59,9 @@ Newest at the bottom. Format: **date — decision.** Why.
   - If listing databases fails (restricted roles), the tree falls back to schemas at the root.
 - **2026-11-21 — Expanded sidebar folders are saved in the workspace** (`expanded` in the .kxs) and restored on start. This revises the earlier "connections and tabs only" rule: tree position is part of "resume where you left off".
 - **2026-11-21 — Live tests are env-gated** (`KAROTX_IT_PG`, `KAROTX_IT_MYSQL`) and use in-process SSH servers (`internal/tunnel/sshtest`), so the SSH paths are tested without external infrastructure. CI runs unit tests only.
+- **2026-11-21 — Query Commander is a step-based builder** (Data → Join → Columns → Filter → Summarize → Sort & limit), not a diagram canvas. It reads well for newcomers, needs no horizontal scrolling, and every step maps one-to-one to a SQL clause.
+  - SQL generation lives in the frontend (`lib/commander.ts`), so the preview updates instantly. The server only runs the final SQL, so the production guard still applies.
+  - "Contains" filters are case-insensitive (ILIKE on Postgres; LIKE elsewhere).
+  - Values typed into number columns are only emitted unquoted when they are numeric, so they can't inject SQL.
+  - Builder → SQL is one-way ("Edit as SQL"). SQL text is not parsed back into the builder.
+- **2026-11-21 — Frontend unit tests use Node's built-in runner** (`node --test`, with type stripping) on the pure modules. This adds no test framework dependency.

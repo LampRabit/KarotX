@@ -38,6 +38,8 @@ type Conn interface {
 	// Databases lists other databases on the same server for drivers whose
 	// connection is bound to one database (Postgres); nil otherwise.
 	Databases(ctx context.Context) ([]string, error)
+	// ForeignKeys lists the foreign keys between tables of a schema (for join suggestions).
+	ForeignKeys(ctx context.Context, schema string) ([]ForeignKey, error)
 	Browse(ctx context.Context, r BrowseRequest) (*Result, error)
 	// Apply runs grid edits in one transaction. With dryRun it only returns the SQL.
 	Apply(ctx context.Context, r ApplyRequest, dryRun bool) ([]string, error)
@@ -81,6 +83,15 @@ type ColumnInfo struct {
 	AutoIncrement bool    `json:"autoIncrement"`
 	// PrimaryKeyName is the PK constraint name (Postgres), needed to change the key.
 	PrimaryKeyName string `json:"primaryKeyName,omitempty"`
+}
+
+// ForeignKey links Columns of Table to RefColumns of RefTable (same order).
+type ForeignKey struct {
+	Name       string   `json:"name"`
+	Table      string   `json:"table"`
+	Columns    []string `json:"columns"`
+	RefTable   string   `json:"refTable"`
+	RefColumns []string `json:"refColumns"`
 }
 
 type Column struct {

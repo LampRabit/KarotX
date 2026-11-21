@@ -146,3 +146,43 @@ PRAGMA foreign_keys = ON`, driver.QueryOptions{})
 }
 
 func openRaw(file string) (*sql.DB, error) { return sql.Open("sqlite", file) }
+
+func TestSQLiteForeignKeys(t *testing.T) {
+	ctx := context.Background()
+	file := filepath.Join(t.TempDir(), "fk.db")
+	if err := CreateSQLiteFile(file); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Driver{sqlite{}}.Open(ctx, driver.OpenParams{Conn: model.Connection{File: file}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	res, _ := c.Query(ctx, `CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE regions (a INT, b INT, PRIMARY KEY (a, b));
+CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INT REFERENCES customers(id), ra INT, rb INT,
+  FOREIGN KEY (ra, rb) REFERENCES regions(a, b))`, driver.QueryOptions{})
+	for _, r := range res {
+		if r.Error != "" {
+			t.Fatal(r.Error)
+		}
+	}
+	fks, err := c.ForeignKeys(ctx, "main")
+	if err != nil || len(fks) != 2 {
+		t.Fatalf("foreign keys: %v %+v", err, fks)
+	}
+	var single, composite *driver.ForeignKey
+	for i := range fks {
+		if fks[i].RefTable == "customers" {
+			single = &fks[i]
+		} else {
+			composite = &fks[i]
+		}
+	}
+	if single == nil || single.Table != "orders" || single.Columns[0] != "customer_id" || single.RefColumns[0] != "id" {
+		t.Fatalf("single-column FK: %+v", single)
+	}
+	if composite == nil || len(composite.Columns) != 2 || composite.Columns[1] != "rb" || composite.RefColumns[1] != "b" {
+		t.Fatalf("composite FK: %+v", composite)
+	}
+}

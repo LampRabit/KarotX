@@ -188,7 +188,7 @@ const shortcutGroups: { title: string; keys: [string, string][] }[] = [
     [`${modKey} A`, 'Select all rows'],
     ['Delete', 'Mark selected rows for deletion'],
     [`${modKey} C`, 'Copy cell'],
-    [`${modKey} F`, 'Focus the WHERE filter'],
+    [`${modKey} F`, 'Add a filter (or the SQL filter box)'],
     [`${modKey} S`, 'Review & save changes'],
     ['Alt R', 'Reload rows'],
   ] },
@@ -237,6 +237,12 @@ export function useGlobalShortcuts(actions: Actions) {
       const ids = ['', ...ws.tabs.map((t) => t.id)]
       const cycle = (by: number) => ws.setActive(ids[(ids.indexOf(ws.activeTab) + by + ids.length) % ids.length])
 
+      // Ctrl+F on a table tab opens its filter (wherever focus is), except inside text fields/editors.
+      if (mod && e.key.toLowerCase() === 'f' && !isTyping(e.target) && ws.tabs.find((t) => t.id === ws.activeTab)?.kind === 'table') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('kx:filter', { detail: ws.activeTab }))
+        return
+      }
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         return dialogs.dialog?.kind === 'palette' ? dialogs.close() : dialogs.open({ kind: 'palette' })

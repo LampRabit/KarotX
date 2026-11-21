@@ -7,6 +7,8 @@ import { modKey } from '@/lib/hooks'
 import { useWorkspace, type Tab } from '@/lib/workspace'
 import { BrandIcon } from '../BrandIcon'
 import { QueryComposer } from '../database/QueryComposer'
+import { QueryCommander } from '../builder/QueryCommander'
+import { Segmented } from '../ui/Segmented'
 import { Kbd } from '../ui/Kbd'
 import { Results } from './Results'
 import { useElapsed, useQueryRunner } from './useQueryRunner'
@@ -52,6 +54,8 @@ export function QueryTab({ tab, conn }: { tab: QTab; conn: ConnView }) {
   const elapsed = useElapsed(!!runner.running)
   const schema = useSchema(conn.id, tab.schema, tab.database)
   const scope = [tab.database, tab.schema].filter(Boolean).join('.') || conn.info?.database || conn.database || conn.name
+  // UI first: new tabs open in the visual builder; SQL is the second view.
+  const mode = tab.mode ?? (tab.sql.trim() ? 'sql' : 'builder')
 
   const empty = (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -73,29 +77,44 @@ export function QueryTab({ tab, conn }: { tab: QTab; conn: ConnView }) {
           <h2 className="truncate font-semibold">{tab.title}</h2>
           <span className="truncate text-xs text-muted-foreground">{conn.name}{tab.database ? ` · ${tab.database}` : ''}{tab.schema ? ` · ${tab.schema}` : ''}</span>
         </div>
+        <Segmented
+          label="Query mode"
+          value={mode}
+          onChange={(m) => updateTab(tab.id, { mode: m })}
+          options={[{ value: 'builder', label: 'Builder' }, { value: 'sql', label: 'SQL' }]}
+          className="ml-auto shrink-0"
+        />
         {conn.production && (
-          <span className="ml-auto shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-semibold text-destructive">PRODUCTION{conn.readOnly ? ' · READ-ONLY' : ''}</span>
+          <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-semibold text-destructive">PRODUCTION{conn.readOnly ? ' · READ-ONLY' : ''}</span>
         )}
       </div>
 
-      <div className="min-h-0 flex-1">
-        <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running} empty={empty} />
-      </div>
+      {mode === 'builder' ? (
+        <div className="min-h-0 flex-1">
+          <QueryCommander conn={conn} tab={tab} runner={runner} onEditSql={(sql) => updateTab(tab.id, { mode: 'sql', sql })} />
+        </div>
+      ) : (
+        <>
+          <div className="min-h-0 flex-1">
+            <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running} empty={empty} />
+          </div>
 
-      <QueryComposer
-        value={tab.sql}
-        onChange={(sql) => updateTab(tab.id, { sql })}
-        onRun={runner.run}
-        onStop={runner.stop}
-        running={!!runner.running}
-        dialect={conn.driver}
-        schema={schema}
-        scopeLabel={scope}
-        elapsed={elapsed}
-        initialMaxHeight={320}
-        autoFocus={!tab.sql}
-        placeholder="Write SQL… e.g. SELECT * FROM customers LIMIT 50"
-      />
+          <QueryComposer
+            value={tab.sql}
+            onChange={(sql) => updateTab(tab.id, { sql })}
+            onRun={runner.run}
+            onStop={runner.stop}
+            running={!!runner.running}
+            dialect={conn.driver}
+            schema={schema}
+            scopeLabel={scope}
+            elapsed={elapsed}
+            initialMaxHeight={320}
+            autoFocus={!tab.sql}
+            placeholder="Write SQL… e.g. SELECT * FROM customers LIMIT 50"
+          />
+        </>
+      )}
       {runner.confirmDialog}
     </div>
   )

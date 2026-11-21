@@ -18,7 +18,7 @@ Phases 0–4 make up the MVP.
 - Restore connections, tabs and expanded tree folders from the state file.
 - Postgres: switch between databases on the same server.
 
-### Phase 2 — Query Commander (UI first)
+### Phase 2 — Query Commander (UI first) ✅
 - Visual builder: tables, columns, FK-aware joins, filters, group/aggregate, sort, limit. No typing needed.
 - Live, editable SQL output for each dialect, as the second view.
 - The same visual filter builder becomes the table filter's main mode (raw WHERE stays available).

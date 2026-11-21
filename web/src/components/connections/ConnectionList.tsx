@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
   ChevronRight, Columns3, Copy, Database, Eraser, Eye, FileCode2, Folder, KeyRound, LayoutGrid, MoreHorizontal,
-  Pencil, Plug, Plus, RefreshCw, Table2, Trash2, Unplug,
+  Pencil, Plug, Plus, RefreshCw, Table2, Trash2, Unplug, Wand2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
@@ -9,6 +9,7 @@ import type { ConnView, TreeNode } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
 import { selectSql } from '@/lib/ddl'
+import { emptyCommander } from '@/lib/commander'
 import { openDialog } from '@/lib/dialogs'
 import { containerOf, isServerDatabase, tableRefOf, treeKey, useWorkspace } from '@/lib/workspace'
 import { BrandIcon } from '../BrandIcon'
@@ -108,7 +109,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
       <>
         <CtxLabel>{node.name}</CtxLabel>
         <CtxItem icon={<Table2 />} shortcut="Enter" onSelect={() => ws.openTable(conn.id, ref)}>Open data</CtxItem>
-        <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, selectSql(conn.driver, schema, node.name), schema, database)}>Query in editor</CtxItem>
+        <CtxItem icon={<Wand2 />} onSelect={() => ws.openQuery(conn.id, '', schema, database, emptyCommander(node.name))}>Build a query</CtxItem>
+        <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, selectSql(conn.driver, schema, node.name), schema, database)}>Query in SQL editor</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
         {!ro && node.kind === 'table' && (
           <>

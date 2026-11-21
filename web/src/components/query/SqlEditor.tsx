@@ -50,9 +50,10 @@ type Props = {
   compact?: { minHeight: string; maxHeight: string }
   placeholder?: string
   autoFocus?: boolean
+  readOnly?: boolean
 }
 
-export function SqlEditor({ value, onChange, dialect, schema, onRun, editorRef, compact, placeholder, autoFocus }: Props) {
+export function SqlEditor({ value, onChange, dialect, schema, onRun, editorRef, compact, placeholder, autoFocus, readOnly }: Props) {
   const extensions = useMemo(
     () => [
       sql({ dialect: dialects[dialect], schema, upperCaseKeywords: true }),
@@ -75,6 +76,8 @@ export function SqlEditor({ value, onChange, dialect, schema, onRun, editorRef, 
       minHeight={compact?.minHeight}
       maxHeight={compact?.maxHeight}
       autoFocus={autoFocus}
+      readOnly={readOnly}
+      editable={!readOnly}
       placeholder={placeholder ?? 'Write SQL here. Press Ctrl+Enter to run.'}
       basicSetup={{
         foldGutter: false,
