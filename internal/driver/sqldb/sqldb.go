@@ -41,6 +41,11 @@ type dialect interface {
 type Driver struct{ d dialect }
 
 func (dr Driver) Open(ctx context.Context, p driver.OpenParams) (driver.Conn, error) {
+	return dr.OpenSQL(ctx, p)
+}
+
+// OpenSQL is Open with the SQL capability in the return type.
+func (dr Driver) OpenSQL(ctx context.Context, p driver.OpenParams) (driver.SQL, error) {
 	db, err := dr.d.open(ctx, p)
 	if err != nil {
 		return nil, err

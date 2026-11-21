@@ -1,7 +1,7 @@
 # Progress
 
 ## Status
-**Phase 2 (Query Commander) complete** (2026-11-21). Next: Phase 3 (Redis).
+**Phases 3 (Redis) and 4 (MongoDB) complete** (2026-11-21). Next: Phase 5 (ClickHouse, Neo4j, Memcached, DynamoDB).
 
 ## Done
 - Requirements gathered (see context.md, decisions.md).
@@ -74,8 +74,17 @@
     - A Playwright walkthrough on SQLite: the builder's result equals hand-written SQL, and the chip filter works.
     - Live FK discovery and builder SQL on Postgres 18, MariaDB 12 and MySQL 26.
 
+- Phase 3 + 4: Redis and MongoDB (UI first).
+  - Driver capability interfaces (`SQL`, `KeyValue`, `Document`) replace the single SQL-shaped `Conn`.
+  - Redis: db switcher with key counts, pattern search, type filter, type-aware editors (string with JSON formatting, hash, list, set, zset, stream), rename, TTL popover with live countdown, new-key dialog, redis-cli style console with history. Upstash preset; `redis://`/`rediss://` URLs.
+  - MongoDB: database/collection tree, collection tab with table and JSON views, filter chips built from sampled fields (raw JSON filter as fallback), document edit/insert/delete, aggregation and command console, create/drop collection and database. SRV and seed lists, auth source, Atlas preset; `mongodb(+srv)://` URLs.
+  - SSH tunnel channels are bridged through `net.Pipe` so drivers that set deadlines (Mongo) work through tunnels.
+  - Verified:
+    - miniredis unit tests (browse, edit, write classification, command splitting); live MongoDB 9 tests directly and through SSH (`KAROTX_IT_MONGO`).
+    - Playwright walkthroughs of both in Edge, light and dark: hash/string/TTL/new key/console on Redis; filter, JSON view, edit, aggregation and drop database on MongoDB.
+
 ## Next
-- Phase 3: Redis (key browser with type-aware views, TTL, command console), UI first.
+- Phase 5: ClickHouse, Neo4j (graph view), Memcached, DynamoDB, UI first.
 - Possible Commander follow-ups: self-joins (table aliases), date-part grouping (by day/month), and value pickers that suggest distinct values.
 
 ## Open questions

@@ -10,6 +10,7 @@ import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Dialog'
 import { Input } from '../ui/Input'
 import { TableDesigner } from './TableDesigner'
+import { MongoCreate, MongoDrop } from './MongoDialogs'
 
 /** Runs DDL statements as one script; throws on the first failing statement. */
 export async function runDDL(conn: ConnView, stmts: string[], schema: string | undefined, label: string, database?: string) {
@@ -144,6 +145,7 @@ export function SchemaDialogs() {
       ]
       const closes = (t: (typeof ws.tabs)[number]) => {
         if (t.connId !== conn.id) return false
+        if (t.kind === 'redis') return false
         const tdb = t.kind === 'table' ? t.table.database : t.database
         const tschema = t.kind === 'table' ? t.table.schema : t.schema
         if (pgDatabase) return tdb === target
@@ -170,6 +172,10 @@ export function SchemaDialogs() {
           onClose={close}
         />
       )
+    } else if (relevant.kind === 'mongo-create') {
+      body = <MongoCreate conn={conn} db={relevant.db} onClose={close} />
+    } else if (relevant.kind === 'mongo-drop') {
+      body = <MongoDrop conn={conn} db={relevant.db} collection={relevant.collection} onClose={close} />
     } else if (relevant.kind === 'empty-table') {
       body = (
         <SimpleAction

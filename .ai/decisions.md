@@ -64,4 +64,6 @@ Newest at the bottom. Format: **date — decision.** Why.
   - "Contains" filters are case-insensitive (ILIKE on Postgres; LIKE elsewhere).
   - Values typed into number columns are only emitted unquoted when they are numeric, so they can't inject SQL.
   - Builder → SQL is one-way ("Edit as SQL"). SQL text is not parsed back into the builder.
+- **2026-11-21 — Drivers declare capabilities** (`SQL`, `KeyValue`, `Document`, `TableLister`) on top of a minimal `Conn`, instead of forcing every database into a SQL shape. Each gets its own API routes and its own tab UI.
+- **2026-11-21 — Redis and MongoDB guards live in the server.** These databases have no read-only session, so KarotX classifies each command (Redis `COMMAND` write flags plus admin subcommands; Mongo write ops, `$out`/`$merge`, non-read commands). Read-only connections get 403; production connections get the usual 409 confirm. `SELECT`/`SUBSCRIBE`/`MONITOR` are refused in the console because the tab owns the db and pooled connections must stay stateless.
 - **2026-11-21 — Frontend unit tests use Node's built-in runner** (`node --test`, with type stripping) on the pure modules. This adds no test framework dependency.

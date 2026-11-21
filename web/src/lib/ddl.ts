@@ -8,7 +8,7 @@ export const q = (d: DriverName, id: string) =>
 const qualify = (d: DriverName, schema: string, table: string) =>
   d === 'sqlite' ? q(d, table) : `${q(d, schema)}.${q(d, table)}`
 
-export const typeSuggestions: Record<DriverName, string[]> = {
+export const typeSuggestions: Partial<Record<DriverName, string[]>> = {
   postgres: ['bigint', 'integer', 'text', 'varchar(255)', 'boolean', 'numeric(10,2)', 'double precision', 'date', 'timestamp', 'timestamptz', 'uuid', 'jsonb', 'bytea'],
   mysql: ['bigint', 'int', 'varchar(255)', 'text', 'tinyint(1)', 'decimal(10,2)', 'double', 'date', 'datetime', 'timestamp', 'json', 'blob'],
   sqlite: ['INTEGER', 'TEXT', 'REAL', 'NUMERIC', 'BLOB'],

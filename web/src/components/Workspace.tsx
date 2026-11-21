@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Copy, Database, FileCode2, House, Plus, Table2, X } from 'lucide-react'
+import { Copy, Database, FileCode2, House, KeyRound, Plus, Table2, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
@@ -8,15 +8,18 @@ import { BrandIcon } from './BrandIcon'
 import { DatabaseTab } from './database/DatabaseTab'
 import { QueryTab } from './query/QueryTab'
 import { TableTab } from './table/TableTab'
+import { CollectionTab } from './mongo/CollectionTab'
+import { RedisTab } from './redis/RedisTab'
 import { ContextMenu, CtxItem, CtxSeparator } from './ui/ContextMenu'
 import { Menu, MenuContent, MenuItem, MenuTrigger } from './ui/Menu'
 import { Tooltip } from './ui/Tooltip'
 
-const tabIcon = { table: Table2, query: FileCode2, database: Database }
+const tabIcon = { table: Table2, query: FileCode2, database: Database, redis: KeyRound }
 
 function subtitle(t: Tab, connName?: string) {
   if (t.kind === 'table') return t.table.schema === 'main' ? connName : [t.table.database, t.table.schema].filter(Boolean).join('.')
   if (t.kind === 'query') return [t.database, t.schema].filter(Boolean).join('.') || connName
+  if (t.kind === 'redis') return `db${t.db} · keys`
   if (t.title === connName) return 'Database'
   return t.database && t.schema ? `${t.database} · ${connName}` : connName
 }
@@ -180,7 +183,10 @@ export function Workspace({ home }: { home: ReactNode }) {
           if (!conn || !seen.has(t.id)) return null
           return (
             <div key={t.id} role="tabpanel" aria-labelledby={`tab-${t.id}`} className={cn('absolute inset-0', activeTab !== t.id && 'hidden')}>
-              {t.kind === 'table' ? <TableTab tab={t} conn={conn} /> : t.kind === 'query' ? <QueryTab tab={t} conn={conn} /> : <DatabaseTab tab={t} conn={conn} />}
+              {t.kind === 'table' ? (conn.driver === 'mongodb' ? <CollectionTab tab={t} conn={conn} /> : <TableTab tab={t} conn={conn} />)
+                : t.kind === 'query' ? <QueryTab tab={t} conn={conn} />
+                : t.kind === 'redis' ? <RedisTab tab={t} conn={conn} />
+                : <DatabaseTab tab={t} conn={conn} />}
             </div>
           )
         })}

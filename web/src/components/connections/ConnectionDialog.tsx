@@ -40,6 +40,13 @@ function draftFor(kind: DbKind): Connection {
   }
 }
 
+const urlExample: Record<string, string> = {
+  postgres: 'postgres://user:password@host:5432/database',
+  mysql: 'mysql://user:password@host:3306/database',
+  redis: 'redis://user:password@host:6379/0  (rediss:// for TLS)',
+  mongodb: 'mongodb+srv://user:password@cluster0.xxxxx.mongodb.net/db',
+}
+
 const newHop = (): SSHHop => ({ host: '', port: 22, user: '', auth: 'key', keyFile: '~/.ssh/id_ed25519' })
 
 type TestState = { status: 'idle' | 'testing' | 'ok' | 'error'; message?: string; info?: Info; ms?: number; hostKey?: HostKeyPrompt }
@@ -191,7 +198,7 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                   <div className="rounded-xl bg-muted/50 p-3.5">
                     <Input
                       label="Have a connection URL? Paste it here"
-                      placeholder={c.driver === 'postgres' ? 'postgres://user:password@host:5432/database' : 'mysql://user:password@host:3306/database'}
+                      placeholder={urlExample[c.driver]}
                       onChange={(e) => pasteUrl(e.target.value)}
                       hint={urlNote || 'Optional. Fills in the fields below for you.'}
                       autoComplete="off"
@@ -228,12 +235,16 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-[1fr_110px] gap-3">
-                      <Input label="Host" placeholder={kind.defaults?.hostHint ?? 'localhost'} value={c.host ?? ''} onChange={(e) => set({ host: e.target.value })} required />
-                      <Input label="Port" inputMode="numeric" value={c.port ?? ''} onChange={(e) => set({ port: Number(e.target.value.replace(/\D/g, '')) || undefined })} />
+                    {c.driver === 'mongodb' && (
+                      <Switch checked={!!c.srv} onChange={(srv) => set({ srv })} label="DNS seed list (mongodb+srv)"
+                        description="Used by MongoDB Atlas and other hosted clusters: enter the cluster host name, without a port." />
+                    )}
+                    <div className={cn('grid gap-3', c.srv ? 'grid-cols-1' : 'grid-cols-[1fr_110px]')}>
+                      <Input label={c.driver === 'mongodb' && !c.srv ? 'Host (or a seed list: a:27017,b:27017)' : 'Host'} placeholder={kind.defaults?.hostHint ?? 'localhost'} value={c.host ?? ''} onChange={(e) => set({ host: e.target.value })} required />
+                      {!c.srv && <Input label="Port" inputMode="numeric" value={c.port ?? ''} onChange={(e) => set({ port: Number(e.target.value.replace(/\D/g, '')) || undefined })} />}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <Input label="User" value={c.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
+                      <Input label={c.driver === 'redis' ? 'User (ACL, optional)' : 'User'} value={c.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
                       <Input
                         label="Password"
                         type="password"
@@ -244,17 +255,30 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                         hint={editing?.hasPassword && password === null ? 'Leave empty to keep the saved password.' : undefined}
                       />
                     </div>
-                    <Input label="Database" placeholder={c.driver === 'mysql' ? 'Optional. Browse all databases' : 'postgres'} value={c.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
+                    {c.driver === 'redis' ? (
+                      <Input label="Database number" inputMode="numeric" value={c.database ?? '0'} hint="Redis databases are numbered 0–15. You can switch later."
+                        onChange={(e) => set({ database: e.target.value.replace(/\D/g, '') || '0' })} />
+                    ) : c.driver === 'mongodb' ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input label="Database" placeholder="Optional. Browse all databases" value={c.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
+                        <Input label="Auth source" placeholder="admin" value={c.params?.authSource ?? ''} hint="Database that holds the user (usually admin)."
+                          onChange={(e) => set({ params: { ...c.params, authSource: e.target.value } })} />
+                      </div>
+                    ) : (
+                      <Input label="Database" placeholder={c.driver === 'mysql' ? 'Optional. Browse all databases' : 'postgres'} value={c.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
+                    )}
 
                     <Collapsible title="Encryption (TLS)" badge={<Badge>{c.tls.mode ?? 'prefer'}</Badge>}>
                       <Segmented
                         label="TLS mode"
                         value={c.tls.mode ?? 'prefer'}
                         onChange={(mode) => set({ tls: { ...c.tls, mode } })}
-                        options={[{ value: 'off', label: 'Off' }, { value: 'prefer', label: 'Prefer' }, { value: 'require', label: 'Require' }, { value: 'verify', label: 'Verify' }]}
+                        options={(c.driver === 'redis'
+                          ? [{ value: 'off', label: 'Off' }, { value: 'require', label: 'Require' }, { value: 'verify', label: 'Verify' }]
+                          : [{ value: 'off', label: 'Off' }, { value: 'prefer', label: c.driver === 'mongodb' ? 'Auto' : 'Prefer' }, { value: 'require', label: 'Require' }, { value: 'verify', label: 'Verify' }]) as { value: TLSMode; label: string }[]}
                         className="w-full"
                       />
-                      <p className="text-[13px] text-muted-foreground">{tlsHelp[c.tls.mode ?? 'prefer']}</p>
+                      <p className="text-[13px] text-muted-foreground">{c.driver === 'mongodb' && (c.tls.mode ?? 'prefer') === 'prefer' ? 'Follows the connection settings: on for mongodb+srv (Atlas), off otherwise.' : tlsHelp[c.tls.mode ?? 'prefer']}</p>
                       {(c.tls.mode === 'require' || c.tls.mode === 'verify') && (
                         <div className="grid gap-3">
                           <Input label="CA certificate file" placeholder="Optional" value={c.tls.caFile ?? ''} onChange={(e) => set({ tls: { ...c.tls, caFile: e.target.value } })} />

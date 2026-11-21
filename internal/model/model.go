@@ -11,7 +11,7 @@ import (
 type Connection struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Driver   string `json:"driver"`           // postgres | mysql | sqlite
+	Driver   string `json:"driver"`           // postgres | mysql | sqlite | redis | mongodb
 	Preset   string `json:"preset,omitempty"` // supabase, neon, mariadb, ... (UI hint)
 	Color    string `json:"color,omitempty"`
 	Host     string `json:"host,omitempty"`
@@ -19,6 +19,11 @@ type Connection struct {
 	User     string `json:"user,omitempty"`
 	Database string `json:"database,omitempty"`
 	File     string `json:"file,omitempty"` // sqlite
+
+	// SRV resolves Host as a DNS seed list (mongodb+srv://, e.g. MongoDB Atlas).
+	SRV bool `json:"srv,omitempty"`
+	// Params are extra driver options, e.g. MongoDB URI options (authSource, replicaSet, …).
+	Params map[string]string `json:"params,omitempty"`
 
 	TLS TLS  `json:"tls"`
 	SSH *SSH `json:"ssh,omitempty"`
@@ -69,7 +74,7 @@ func (c *Connection) Validate() error {
 		if c.File == "" {
 			return errors.New("choose a database file")
 		}
-	case "postgres", "mysql":
+	case "postgres", "mysql", "redis", "mongodb":
 		if c.Host == "" {
 			return errors.New("enter a host")
 		}

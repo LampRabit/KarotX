@@ -39,17 +39,21 @@ Every driver implements a small core. Optional features are declared as **capabi
 type Driver interface {
     Open(ctx, OpenParams{Conn, Password, Dial}) (Conn, error)
 }
-type Conn interface {
-    Ping(ctx) error
+type Conn interface {                 // every driver
     Info() Info
     Ping(ctx) error
-    Tree(ctx, path []string) ([]Node, error)            // lazy schema browser
-    Query(ctx, sql string, maxRows int) ([]*Result, error) // one result per statement
-    Browse(ctx, BrowseRequest) (*Result, error)          // paged table rows + primary key
-    Apply(ctx, ApplyRequest, dryRun bool) ([]string, error) // grid edits in one transaction
+    Tree(ctx, path []string) ([]Node, error) // lazy browser tree
     Close() error
 }
+// Capabilities, type-asserted by the server:
+type TableLister interface { Tables(ctx, schema) ([]TableInfo, error) }          // SQL + Mongo cards
+type SQL interface { Query; Columns; Databases; ForeignKeys; Browse; Apply }      // sqldb (Postgres/MySQL/SQLite)
+type KeyValue interface { Scan; GetKey; Do; IsWrite(args); DBSize }               // redisdrv
+type Document interface { Find; Fields; Insert; Replace; Delete; Aggregate; RunCommand; Create/Drop… } // mongodrv
 ```
+
+- The server looks capabilities up per request (`asSQL`, `s.kv`, `s.doc`) and serves `/api/connections/{id}/redis/*` and `/mongo/*` routes. The frontend picks the tab by driver: SQL table tab, Mongo collection tab, Redis key-browser tab.
+- Read-only and production rules for non-SQL drivers are enforced in the server: Redis classifies commands with `IsWrite` (COMMAND flags plus admin subcommands); MongoDB blocks writes, `$out`/`$merge` stages and non-read commands.
 
 - `Tree` is lazy (expand on demand) so large schemas stay fast.
 - Results are paged and streamed in chunks, and the grid is virtualized, so big tables never load fully into memory.

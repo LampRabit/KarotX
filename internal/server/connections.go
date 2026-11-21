@@ -34,6 +34,8 @@ func (s *Server) routeConnections(api *http.ServeMux) {
 	api.HandleFunc("POST /api/connections/{id}/apply", a(s.apply))
 	api.HandleFunc("POST /api/queries/{qid}/cancel", a(s.cancelQuery))
 	api.HandleFunc("PUT /api/workspace", a(s.saveWorkspace))
+	s.routeRedis(api)
+	s.routeMongo(api)
 }
 
 type saveBody struct {
@@ -143,16 +145,18 @@ func (s *Server) tree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if db == "" && len(path) == 0 {
-		if dbs, err := c.Databases(r.Context()); err == nil && dbs != nil {
-			nodes := make([]driver.Node, len(dbs))
-			for i, name := range dbs {
-				nodes[i] = driver.Node{Name: name, Kind: "database", Path: []string{name}, HasChildren: true}
-				if name == c.Info().Database {
-					nodes[i].Detail = "default"
+		if sc, ok := c.(driver.SQL); ok {
+			if dbs, err := sc.Databases(r.Context()); err == nil && dbs != nil {
+				nodes := make([]driver.Node, len(dbs))
+				for i, name := range dbs {
+					nodes[i] = driver.Node{Name: name, Kind: "database", Path: []string{name}, HasChildren: true}
+					if name == c.Info().Database {
+						nodes[i].Detail = "default"
+					}
 				}
+				writeJSON(w, nodes)
+				return
 			}
-			writeJSON(w, nodes)
-			return
 		}
 	}
 	nodes, err := c.Tree(r.Context(), path)
@@ -175,7 +179,12 @@ func (s *Server) tables(w http.ResponseWriter, r *http.Request) {
 		connErr(w, err)
 		return
 	}
-	t, err := c.Tables(r.Context(), q.Get("schema"))
+	tl, ok := c.(driver.TableLister)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "this database has no tables or collections")
+		return
+	}
+	t, err := tl.Tables(r.Context(), q.Get("schema"))
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -190,7 +199,11 @@ func (s *Server) columns(w http.ResponseWriter, r *http.Request) {
 		connErr(w, err)
 		return
 	}
-	cols, err := c.Columns(r.Context(), driver.TableRef{Schema: q.Get("schema"), Table: q.Get("table")})
+	sc, ok := asSQL(w, c)
+	if !ok {
+		return
+	}
+	cols, err := sc.Columns(r.Context(), driver.TableRef{Schema: q.Get("schema"), Table: q.Get("table")})
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -205,12 +218,25 @@ func (s *Server) foreignKeys(w http.ResponseWriter, r *http.Request) {
 		connErr(w, err)
 		return
 	}
-	fks, err := c.ForeignKeys(r.Context(), q.Get("schema"))
+	sc, ok := asSQL(w, c)
+	if !ok {
+		return
+	}
+	fks, err := sc.ForeignKeys(r.Context(), q.Get("schema"))
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	writeJSON(w, fks)
+}
+
+// asSQL returns the connection's SQL capability, or writes a 400 for other database kinds.
+func asSQL(w http.ResponseWriter, c driver.Conn) (driver.SQL, bool) {
+	sc, ok := c.(driver.SQL)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "this action is only available for SQL databases")
+	}
+	return sc, ok
 }
 
 // guard enforces the production safety rule: destructive work on a
@@ -261,9 +287,13 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		connErr(w, err)
 		return
 	}
+	sc, ok := asSQL(w, c)
+	if !ok {
+		return
+	}
 	var results []*driver.Result
 	err = s.opt.Conns.Run(r.Context(), b.QueryID, func(ctx context.Context) error {
-		results, err = c.Query(ctx, b.SQL, driver.QueryOptions{MaxRows: b.MaxRows, Schema: b.Schema})
+		results, err = sc.Query(ctx, b.SQL, driver.QueryOptions{MaxRows: b.MaxRows, Schema: b.Schema})
 		return err
 	})
 	if err != nil {
@@ -286,9 +316,13 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 		connErr(w, err)
 		return
 	}
+	sc, ok := asSQL(w, c)
+	if !ok {
+		return
+	}
 	var res *driver.Result
 	err = s.opt.Conns.Run(r.Context(), b.QueryID, func(ctx context.Context) error {
-		res, err = c.Browse(ctx, b.BrowseRequest)
+		res, err = sc.Browse(ctx, b.BrowseRequest)
 		return err
 	})
 	if err != nil {
@@ -313,7 +347,11 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		connErr(w, err)
 		return
 	}
-	stmts, err := c.Apply(r.Context(), b.ApplyRequest, true)
+	sc, ok := asSQL(w, c)
+	if !ok {
+		return
+	}
+	stmts, err := sc.Apply(r.Context(), b.ApplyRequest, true)
 	if err != nil || b.DryRun {
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -325,7 +363,7 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 	if !s.guard(w, id, b.Confirmed, stmts) {
 		return
 	}
-	if stmts, err = c.Apply(r.Context(), b.ApplyRequest, false); err != nil {
+	if stmts, err = sc.Apply(r.Context(), b.ApplyRequest, false); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -90,9 +91,28 @@ func Open(ctx context.Context, cfg *model.SSH, secrets []string) (*Tunnel, error
 }
 
 // Dial opens a TCP connection to addr from the last SSH server.
+//
+// SSH channels don't support deadlines, which some drivers (MongoDB) need
+// for timeouts, so the channel is bridged through an in-memory pipe that does.
 func (t *Tunnel) Dial(ctx context.Context, _, addr string) (net.Conn, error) {
-	return t.clients[len(t.clients)-1].DialContext(ctx, "tcp", addr)
+	ch, err := t.clients[len(t.clients)-1].DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	local, remote := net.Pipe()
+	go func() { io.Copy(ch, remote); ch.Close() }()
+	go func() { io.Copy(remote, ch); remote.Close() }()
+	return &pipeConn{Conn: local, laddr: ch.LocalAddr(), raddr: ch.RemoteAddr()}, nil
 }
+
+// pipeConn reports the tunnel's real addresses instead of net.Pipe's.
+type pipeConn struct {
+	net.Conn
+	laddr, raddr net.Addr
+}
+
+func (p *pipeConn) LocalAddr() net.Addr  { return p.laddr }
+func (p *pipeConn) RemoteAddr() net.Addr { return p.raddr }
 
 func (t *Tunnel) Close() error {
 	select {

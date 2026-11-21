@@ -9,6 +9,8 @@ export type Tab =
   /** mode: 'builder' (Query Commander, UI first) or 'sql'. Missing on old tabs: SQL if it has text, else builder. */
   | { id: string; kind: 'query'; connId: string; title: string; sql: string; schema?: string; database?: string; mode?: 'builder' | 'sql'; builder?: Commander }
   | { id: string; kind: 'database'; connId: string; title: string; schema?: string; database?: string; sql?: string }
+  /** Redis key browser for one logical database. */
+  | { id: string; kind: 'redis'; connId: string; title: string; db: number }
 
 type TreeEntry = { nodes?: TreeNode[]; loading: boolean; error?: string }
 
@@ -77,7 +79,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   schemaVersion: {},
 
   init: (tabs, activeTab, expanded) => {
-    const valid = (tabs as Tab[]).filter((t) => t && t.id && t.connId && ['table', 'query', 'database'].includes(t.kind))
+    const valid = (tabs as Tab[]).filter((t) => t && t.id && t.connId && ['table', 'query', 'database', 'redis'].includes(t.kind))
     set({
       tabs: valid,
       activeTab: valid.some((t) => t.id === activeTab) ? activeTab! : '',
@@ -160,6 +162,15 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   },
 
   openDatabase: (connId, schema, database) => {
+    const conn = get().connections.find((c) => c.id === connId)
+    if (conn?.driver === 'redis') {
+      // Redis "databases" are numbered key spaces: open the key browser.
+      const db = Number(schema ?? conn.database ?? 0) || 0
+      const open = get().tabs.find((t) => t.kind === 'redis' && t.connId === connId && t.db === db)
+      if (open) return set({ activeTab: open.id })
+      const tab: Tab = { id: newId(), kind: 'redis', connId, title: `${conn.name} · db${db}`, db }
+      return set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
+    }
     const existing = get().tabs.find((t) => t.kind === 'database' && t.connId === connId && (!schema || t.schema === schema) && (!database || t.database === database))
     if (existing) return set({ activeTab: existing.id })
     const name = get().connections.find((c) => c.id === connId)?.name ?? 'Database'

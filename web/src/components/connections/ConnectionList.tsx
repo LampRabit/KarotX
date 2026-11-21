@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
-import type { ConnView, TreeNode } from '@/lib/api'
+import { isSql, type ConnView, type TreeNode } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
 import { selectSql } from '@/lib/ddl'
@@ -102,6 +102,22 @@ function TreeLevel({ conn, path, depth }: { conn: ConnView; path: string[]; dept
 
 function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorkspace.getState>): ReactNode {
   const ro = conn.readOnly
+  if ((node.kind === 'table' || node.kind === 'view') && conn.driver === 'mongodb') {
+    const ref = tableRefOf(node)
+    return (
+      <>
+        <CtxLabel>{node.name}</CtxLabel>
+        <CtxItem icon={<Table2 />} shortcut="Enter" onSelect={() => ws.openTable(conn.id, ref)}>Open collection</CtxItem>
+        <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+        {!ro && (
+          <>
+            <CtxSeparator />
+            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db: ref.schema, collection: node.name })}>Drop collection…</CtxItem>
+          </>
+        )}
+      </>
+    )
+  }
   if (node.kind === 'table' || node.kind === 'view') {
     const ref = tableRefOf(node)
     const { schema, database } = ref
@@ -138,6 +154,32 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
             <CtxSeparator />
             <CtxItem icon={<Plus />} onSelect={() => openDialog({ kind: 'create-database', connId: conn.id, database: db })}>New schema…</CtxItem>
             <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: 'database', schema: db })}>Delete database…</CtxItem>
+          </>
+        )}
+      </>
+    )
+  }
+  if (conn.driver === 'redis') {
+    return (
+      <>
+        <CtxLabel>{node.name}</CtxLabel>
+        <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openDatabase(conn.id, node.path[0])}>Browse keys</CtxItem>
+        <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, [], true)}>Refresh</CtxItem>
+      </>
+    )
+  }
+  if (conn.driver === 'mongodb' && node.kind === 'database') {
+    return (
+      <>
+        <CtxLabel>{node.name}</CtxLabel>
+        <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openDatabase(conn.id, node.name)}>Open database</CtxItem>
+        <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, node.path, true)}>Refresh</CtxItem>
+        <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+        {!ro && (
+          <>
+            <CtxSeparator />
+            <CtxItem icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id, db: node.name })}>New collection…</CtxItem>
+            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db: node.name })}>Drop database…</CtxItem>
           </>
         )}
       </>
@@ -181,6 +223,7 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
   const isContainer = node.kind === 'schema' || node.kind === 'database'
   // Opens the database view for this node (a tab, or the one already open).
   const openView = () => {
+    if (conn.driver === 'redis') return ws.openDatabase(conn.id, node.path[0])
     if (serverDb) return ws.openDatabase(conn.id, undefined, node.name)
     const { schema, database } = containerOf(node)
     ws.openDatabase(conn.id, schema, database)
@@ -204,7 +247,7 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
             data-depth={depth}
             role="treeitem"
             aria-expanded={node.hasChildren ? open : undefined}
-            onClick={() => (isTable ? ws.openTable(conn.id, tableRefOf(node)) : toggle())}
+            onClick={() => (isTable ? ws.openTable(conn.id, tableRefOf(node)) : conn.driver === 'redis' ? openView() : toggle())}
             onDoubleClick={() => {
               if (!isContainer) return
               ws.toggle(key, true) // the two single clicks toggled it; keep it open
@@ -245,7 +288,7 @@ function ConnectionActions({ conn, onEdit, onDelete, Item, Sep }: {
   return (
     <>
       <Item icon={<LayoutGrid />} onSelect={() => ws.openDatabase(conn.id)}>Open database</Item>
-      <Item icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id)}>New query</Item>
+      {isSql(conn.driver) && <Item icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id)}>New query</Item>}
       {conn.status === 'connected' ? (
         <>
           <Item icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, [], true)}>Refresh schema</Item>
@@ -254,9 +297,12 @@ function ConnectionActions({ conn, onEdit, onDelete, Item, Sep }: {
       ) : (
         <Item icon={<Plug />} onSelect={() => ws.openConnection(conn.id)}>Connect</Item>
       )}
-      {conn.driver !== 'sqlite' && !conn.readOnly && (
+      {(conn.driver === 'postgres' || conn.driver === 'mysql') && !conn.readOnly && (
         // Postgres: a new database on the server; MySQL: a new database (schema).
         <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'create-database', connId: conn.id, server: conn.driver === 'postgres' })}>New database…</Item>
+      )}
+      {conn.driver === 'mongodb' && !conn.readOnly && (
+        <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id })}>New database…</Item>
       )}
       <Item icon={<Pencil />} onSelect={() => onEdit(conn)}>Edit connection…</Item>
       <Item icon={<Copy />} onSelect={() => copy(conn.driver === 'sqlite' ? conn.file ?? '' : `${conn.host}:${conn.port ?? ''}`)}>Copy address</Item>

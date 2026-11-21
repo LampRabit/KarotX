@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Command, CornerDownLeft, DatabaseZap, FileCode2, House, Keyboard, LayoutGrid, Moon, Search, Settings, Table2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { isSql } from '@/lib/api'
 import { kindOf } from '@/lib/databases'
 import { useDialogs } from '@/lib/dialogs'
 import { modKey } from '@/lib/hooks'
@@ -56,7 +57,7 @@ export function CommandPalette({ actions }: { actions: Actions }) {
     for (const c of connections) {
       const icon = <BrandIcon db={kindOf(c)} size={16} className="rounded" />
       list.push({ id: `db-${c.id}`, group: 'Connections', label: `Open ${c.name}`, hint: c.status === 'connected' ? 'connected' : undefined, icon, run: () => (openConnection(c.id), openDatabase(c.id)), keywords: c.host })
-      list.push({ id: `q-${c.id}`, group: 'Connections', label: `New query on ${c.name}`, icon: <FileCode2 />, run: () => openQuery(c.id) })
+      if (isSql(c.driver)) list.push({ id: `q-${c.id}`, group: 'Connections', label: `New query on ${c.name}`, icon: <FileCode2 />, run: () => openQuery(c.id) })
     }
     const seen = new Set<string>()
     for (const [key, entry] of Object.entries(trees)) {

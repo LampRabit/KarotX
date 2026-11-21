@@ -25,7 +25,7 @@ func TestSQLiteEndToEnd(t *testing.T) {
 	db.Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, note TEXT)`)
 	db.Close()
 
-	c, err := Driver{sqlite{}}.Open(ctx, driver.OpenParams{Conn: model.Connection{File: file}})
+	c, err := Driver{sqlite{}}.OpenSQL(ctx, driver.OpenParams{Conn: model.Connection{File: file}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,14 +127,14 @@ PRAGMA foreign_keys = ON`, driver.QueryOptions{})
 	if err := CreateSQLiteFile(newFile); err == nil {
 		t.Fatal("CreateSQLiteFile overwrote an existing file")
 	}
-	if nc, err := (Driver{sqlite{}}).Open(ctx, driver.OpenParams{Conn: model.Connection{File: newFile}}); err != nil {
+	if nc, err := (Driver{sqlite{}}).OpenSQL(ctx, driver.OpenParams{Conn: model.Connection{File: newFile}}); err != nil {
 		t.Fatalf("open new file: %v", err)
 	} else {
 		nc.Close()
 	}
 
 	// Read-only sessions reject writes.
-	ro, err := Driver{sqlite{}}.Open(ctx, driver.OpenParams{Conn: model.Connection{File: file, ReadOnly: true}})
+	ro, err := Driver{sqlite{}}.OpenSQL(ctx, driver.OpenParams{Conn: model.Connection{File: file, ReadOnly: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestSQLiteForeignKeys(t *testing.T) {
 	if err := CreateSQLiteFile(file); err != nil {
 		t.Fatal(err)
 	}
-	c, err := Driver{sqlite{}}.Open(ctx, driver.OpenParams{Conn: model.Connection{File: file}})
+	c, err := Driver{sqlite{}}.OpenSQL(ctx, driver.OpenParams{Conn: model.Connection{File: file}})
 	if err != nil {
 		t.Fatal(err)
 	}

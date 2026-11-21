@@ -180,7 +180,7 @@ export function TableDesigner({ conn, schema, table, database, onClose }: { conn
               ))}
             </ul>
           )}
-          <datalist id={listId}>{typeSuggestions[d].map((t) => <option key={t} value={t} />)}</datalist>
+          <datalist id={listId}>{(typeSuggestions[d] ?? []).map((t) => <option key={t} value={t} />)}</datalist>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Button type="button" size="sm" variant="secondary" onClick={add}><Plus size={14} aria-hidden /> Add column</Button>
             <span className="text-xs text-muted-foreground">

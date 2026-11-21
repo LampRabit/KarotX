@@ -59,7 +59,7 @@ func ctx10(t *testing.T) context.Context {
 	return ctx
 }
 
-func mustQuery(t *testing.T, c driver.Conn, sql string) [][]any {
+func mustQuery(t *testing.T, c driver.SQL, sql string) [][]any {
 	t.Helper()
 	res, err := c.Query(ctx10(t), sql, driver.QueryOptions{})
 	if err != nil || res[0].Error != "" {
@@ -89,7 +89,7 @@ func TestLiveThroughSSHTunnel(t *testing.T) {
 			}
 			defer tun.Close()
 
-			c, err := tg.dialect.Open(ctx10(t), driver.OpenParams{Conn: tg.conn, Password: tg.password, Dial: tun.Dial})
+			c, err := tg.dialect.OpenSQL(ctx10(t), driver.OpenParams{Conn: tg.conn, Password: tg.password, Dial: tun.Dial})
 			if err != nil {
 				t.Fatalf("open through tunnel: %v", err)
 			}
@@ -114,7 +114,7 @@ func TestLiveTLS(t *testing.T) {
 		t.Run(tg.name, func(t *testing.T) {
 			conn := tg.conn
 			conn.TLS = model.TLS{Mode: "require"}
-			c, err := tg.dialect.Open(ctx10(t), driver.OpenParams{Conn: conn, Password: tg.password})
+			c, err := tg.dialect.OpenSQL(ctx10(t), driver.OpenParams{Conn: conn, Password: tg.password})
 			if err != nil {
 				t.Skipf("server does not offer TLS (require mode refused): %v", err)
 			}
@@ -134,7 +134,7 @@ func TestLiveTLS(t *testing.T) {
 
 			// Verify mode against a self-signed / unknown CA must be refused.
 			conn.TLS = model.TLS{Mode: "verify"}
-			if c2, err := tg.dialect.Open(ctx10(t), driver.OpenParams{Conn: conn, Password: tg.password}); err == nil {
+			if c2, err := tg.dialect.OpenSQL(ctx10(t), driver.OpenParams{Conn: conn, Password: tg.password}); err == nil {
 				c2.Close()
 				t.Log("verify mode accepted: the server certificate is trusted by this machine")
 			} else {

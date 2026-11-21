@@ -23,10 +23,10 @@ Phases 0–4 make up the MVP.
 - Live, editable SQL output for each dialect, as the second view.
 - The same visual filter builder becomes the table filter's main mode (raw WHERE stays available).
 
-### Phase 3 — Redis
+### Phase 3 — Redis ✅
 - Key browser (pattern scan, type-aware views for string/hash/list/set/zset/stream), TTL, command console.
 
-### Phase 4 — MongoDB
+### Phase 4 — MongoDB ✅
 - Databases/collections tree, document view and table view, filter builder (the Commander for documents), JSON editing, aggregation console.
 
 ### Phase 5 — More drivers

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Check, ChevronDown, Copy, Database, Eraser, Eye, FileCode2, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Table2, Trash2, Wand2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
-import { api, type ConnView, type TableInfo } from '@/lib/api'
+import { api, isSql, type ConnView, type TableInfo } from '@/lib/api'
 import { track } from '@/lib/activity'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
@@ -126,8 +126,12 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
   }
 
   // "New schema" on Postgres, "New database" on MySQL; deleting follows the same naming.
-  const newContainer = () => openDialog({ kind: 'create-database', connId: conn.id, database })
-  const dropContainer = () => openDialog({ kind: 'drop', connId: conn.id, what: conn.driver === 'postgres' ? 'schema' : 'database', schema: schema!, database })
+  const sql = isSql(conn.driver)
+  const mongo = conn.driver === 'mongodb'
+  const item = mongo ? 'collection' : 'table'
+  const newContainer = () => openDialog(mongo ? { kind: 'mongo-create', connId: conn.id } : { kind: 'create-database', connId: conn.id, database })
+  const dropContainer = () => openDialog(mongo ? { kind: 'mongo-drop', connId: conn.id, db: schema! } : { kind: 'drop', connId: conn.id, what: conn.driver === 'postgres' ? 'schema' : 'database', schema: schema!, database })
+  const newItem = () => openDialog(mongo ? { kind: 'mongo-create', connId: conn.id, db: schema } : { kind: 'table-designer', connId: conn.id, schema: schema!, database })
 
   function run(sql: string) {
     setShowResults(true)
@@ -195,14 +199,14 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
           {showResults && (
             <Button size="sm" variant="ghost" onClick={() => openQuery(conn.id, '', schema, database)}><FileCode2 size={14} aria-hidden /> Open editor</Button>
           )}
-          {schema && (
+          {schema && sql && (
             <Button size="sm" variant="secondary" onClick={() => openQuery(conn.id, '', schema, database, emptyCommander())}>
               <Wand2 size={14} aria-hidden /> Build a query
             </Button>
           )}
           {schema && !conn.readOnly && (
-            <Button size="sm" onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, database })}>
-              <Plus size={14} aria-hidden /> New table
+            <Button size="sm" onClick={newItem}>
+              <Plus size={14} aria-hidden /> New {item}
             </Button>
           )}
           <Menu>
@@ -211,7 +215,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
             </MenuTrigger>
             <MenuContent align="end">
               <MenuItem icon={<RefreshCw />} onSelect={() => useWorkspace.getState().schemaChanged(conn.id, schema, database)}>Refresh</MenuItem>
-              <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, '', schema, database)}>Open in query editor</MenuItem>
+              {sql && <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, '', schema, database)}>Open in query editor</MenuItem>}
               {conn.driver !== 'sqlite' && !conn.readOnly && (
                 <>
                   <MenuItem icon={<Plus />} onSelect={newContainer}>New {label}…</MenuItem>
@@ -238,10 +242,10 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <span className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><Table2 size={22} /></span>
             <div>
-              <p className="font-medium">No tables in {schema} yet</p>
-              <p className="text-[13px] text-muted-foreground">Create one with the designer, or run CREATE TABLE below.</p>
+              <p className="font-medium">No {item}s in {schema} yet</p>
+              <p className="text-[13px] text-muted-foreground">{mongo ? 'Create one to start adding documents.' : 'Create one with the designer, or run CREATE TABLE below.'}</p>
             </div>
-            {!conn.readOnly && <Button onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, database })}><Plus size={15} aria-hidden /> New table</Button>}
+            {!conn.readOnly && <Button onClick={newItem}><Plus size={15} aria-hidden /> New {item}</Button>}
           </div>
         ) : (
           <div className="h-full overflow-y-auto p-4">
@@ -254,11 +258,11 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                     content={
                       <>
                         <CtxLabel>{t.name}</CtxLabel>
-                        <CtxItem icon={<Table2 />} onSelect={() => openTable(conn.id, ref(t))} shortcut="Enter">Open data</CtxItem>
-                        <CtxItem icon={<Wand2 />} onSelect={() => openQuery(conn.id, '', schema, database, emptyCommander(t.name))}>Build a query</CtxItem>
-                        <CtxItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, t.name), schema, database)}>Query in editor</CtxItem>
+                        <CtxItem icon={<Table2 />} onSelect={() => openTable(conn.id, ref(t))} shortcut="Enter">{mongo ? 'Open collection' : 'Open data'}</CtxItem>
+                        {sql && <CtxItem icon={<Wand2 />} onSelect={() => openQuery(conn.id, '', schema, database, emptyCommander(t.name))}>Build a query</CtxItem>}
+                        {sql && <CtxItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, t.name), schema, database)}>Query in editor</CtxItem>}
                         <CtxItem icon={<Copy />} onSelect={() => navigator.clipboard.writeText(t.name).then(() => toast.success('Copied name', { duration: 1200 }))}>Copy name</CtxItem>
-                        {!conn.readOnly && t.kind === 'table' && (
+                        {!conn.readOnly && sql && t.kind === 'table' && (
                           <>
                             <CtxSeparator />
                             <CtxItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table: t.name, database })}>Edit structure…</CtxItem>
@@ -266,7 +270,9 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                           </>
                         )}
                         {!conn.readOnly && (
-                          <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: t.kind, schema, table: t.name, database })}>Delete {t.kind}…</CtxItem>
+                          <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog(mongo ? { kind: 'mongo-drop', connId: conn.id, db: schema, collection: t.name } : { kind: 'drop', connId: conn.id, what: t.kind, schema, table: t.name, database })}>
+                            {mongo ? 'Drop collection…' : `Delete ${t.kind}…`}
+                          </CtxItem>
                         )}
                       </>
                     }
@@ -294,7 +300,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
         )}
       </div>
 
-      {schema && (
+      {schema && sql && (
         <QueryComposer
           value={tab.sql ?? ''}
           onChange={(sql) => updateTab(tab.id, { sql })}

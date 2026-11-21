@@ -1,6 +1,6 @@
-// Package driver defines the contract every database driver implements.
-// Optional features are advertised through Info.Caps so the UI only shows
-// what a driver supports.
+// Package driver defines the contract every database driver implements:
+// a small base Conn plus optional capability interfaces (SQL, KeyValue,
+// Document) so each kind of database exposes what it actually supports.
 package driver
 
 import (
@@ -24,15 +24,28 @@ type Driver interface {
 	Open(ctx context.Context, p OpenParams) (Conn, error)
 }
 
+// Conn is what every driver provides. Further capabilities are separate
+// interfaces (SQL, TableLister, KeyValue, Document) that a driver's
+// connection may also implement; the server type-asserts for them.
 type Conn interface {
 	Info() Info
 	Ping(ctx context.Context) error
 	// Tree lists children of the node at path (empty = root). Lazy by design.
 	Tree(ctx context.Context, path []string) ([]Node, error)
+	Close() error
+}
+
+// TableLister lists tables (SQL) or collections (MongoDB) with size estimates.
+type TableLister interface {
+	Tables(ctx context.Context, schema string) ([]TableInfo, error)
+}
+
+// SQL is implemented by relational drivers (Postgres, MySQL/MariaDB, SQLite).
+type SQL interface {
+	Conn
+	TableLister
 	// Query runs one or more statements, returning a result per statement.
 	Query(ctx context.Context, sql string, opt QueryOptions) ([]*Result, error)
-	// Tables lists tables/views in a schema with size estimates.
-	Tables(ctx context.Context, schema string) ([]TableInfo, error)
 	// Columns describes a table's columns (for the table designer).
 	Columns(ctx context.Context, t TableRef) ([]ColumnInfo, error)
 	// Databases lists other databases on the same server for drivers whose
@@ -43,11 +56,10 @@ type Conn interface {
 	Browse(ctx context.Context, r BrowseRequest) (*Result, error)
 	// Apply runs grid edits in one transaction. With dryRun it only returns the SQL.
 	Apply(ctx context.Context, r ApplyRequest, dryRun bool) ([]string, error)
-	Close() error
 }
 
 type Info struct {
-	Dialect       string `json:"dialect"`       // postgres | mysql | sqlite
+	Dialect       string `json:"dialect"`       // postgres | mysql | sqlite | redis | mongodb
 	ServerVersion string `json:"serverVersion"` // e.g. "PostgreSQL 16.2"
 	Database      string `json:"database"`
 }

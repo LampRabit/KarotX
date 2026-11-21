@@ -1,4 +1,5 @@
-import { ArrowRight, FileCode2, KeyRound, Layers, RotateCcw, ShieldAlert } from 'lucide-react'
+import { ArrowRight, FileCode2, KeyRound, Layers, LayoutGrid, RotateCcw, ShieldAlert } from 'lucide-react'
+import { isSql } from '@/lib/api'
 import { motion } from 'motion/react'
 import { databases, kindOf, type DbKind } from '@/lib/databases'
 import { useWorkspace } from '@/lib/workspace'
@@ -58,7 +59,7 @@ const features = [
 ]
 
 function YourConnections() {
-  const { connections, openConnection, openQuery } = useWorkspace()
+  const { connections, openConnection, openQuery, openDatabase } = useWorkspace()
   if (connections.length === 0) return null
   return (
     <section className="space-y-3">
@@ -83,12 +84,12 @@ function YourConnections() {
               </span>
             </button>
             <button
-              onClick={() => openQuery(c.id)}
-              aria-label={`New query on ${c.name}`}
-              title="New query"
+              onClick={() => (isSql(c.driver) ? openQuery(c.id) : openDatabase(c.id))}
+              aria-label={isSql(c.driver) ? `New query on ${c.name}` : `Browse ${c.name}`}
+              title={isSql(c.driver) ? 'New query' : 'Browse'}
               className="absolute top-1/2 right-3 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
             >
-              <FileCode2 size={16} />
+              {isSql(c.driver) ? <FileCode2 size={16} /> : <LayoutGrid size={16} />}
             </button>
           </motion.li>
         ))}

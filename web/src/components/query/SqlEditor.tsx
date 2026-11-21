@@ -7,7 +7,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 import type { DriverName } from '@/lib/api'
 
-const dialects = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite }
+const dialects: Record<string, typeof PostgreSQL> = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite }
 
 const highlight = HighlightStyle.define([
   { tag: [t.keyword, t.operatorKeyword, t.modifier], color: 'var(--syn-keyword)', fontWeight: '600' },
@@ -56,7 +56,7 @@ type Props = {
 export function SqlEditor({ value, onChange, dialect, schema, onRun, editorRef, compact, placeholder, autoFocus, readOnly }: Props) {
   const extensions = useMemo(
     () => [
-      sql({ dialect: dialects[dialect], schema, upperCaseKeywords: true }),
+      sql({ dialect: dialects[dialect] ?? PostgreSQL, schema, upperCaseKeywords: true }),
       syntaxHighlighting(highlight),
       theme,
       ...(compact ? [compactTheme] : []),
