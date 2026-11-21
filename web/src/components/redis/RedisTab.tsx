@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Clock, Copy, KeyRound, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { Clock, Copy, Download, KeyRound, Plus, RefreshCw, Search, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, type ConnView, type RedisKey, type RedisKeyData } from '@/lib/api'
 import { track } from '@/lib/activity'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
+import { openDialog } from '@/lib/dialogs'
 import { useGuard } from '@/lib/guard'
 import { useDelayed } from '@/lib/hooks'
 import { treeKey, useWorkspace, type Tab } from '@/lib/workspace'
@@ -92,11 +93,12 @@ export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
     }
   }, [conn.id, db, query, type, cursor])
 
-  // Search as you type (debounced); changing db/type reloads.
+  // Search as you type (debounced); changing db/type reloads, and so do imports (schema version).
+  const version = useWorkspace((s) => s.schemaVersion[conn.id] ?? 0)
   useEffect(() => {
     const t = setTimeout(() => load(false), 250)
     return () => clearTimeout(t)
-  }, [conn.id, db, query, type]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conn.id, db, query, type, version]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Runs one command through the read-only/production guards; refreshes after writes. */
   const run = useCallback(async (args: string[], label: string) => {
@@ -160,6 +162,18 @@ export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
               {showSpinner ? <Spinner size={15} className="text-primary" /> : <RefreshCw size={15} />}
             </button>
           </Tooltip>
+          <Tooltip content={query || type ? 'Export the matching keys' : 'Export keys'}>
+            <button onClick={() => openDialog({ kind: 'export', target: { kind: 'redis', connId: conn.id, db, pattern: toPattern(query), type } })} aria-label="Export keys" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground">
+              <Download size={15} />
+            </button>
+          </Tooltip>
+          {!conn.readOnly && (
+            <Tooltip content="Import keys">
+              <button onClick={() => openDialog({ kind: 'import', target: { kind: 'redis', connId: conn.id, db } })} aria-label="Import keys" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground">
+                <Upload size={15} />
+              </button>
+            </Tooltip>
+          )}
           {!conn.readOnly && <Button size="sm" onClick={() => setNewKey(true)}><Plus size={14} aria-hidden /> New key</Button>}
         </div>
       </div>

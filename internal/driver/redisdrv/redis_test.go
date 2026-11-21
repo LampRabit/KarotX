@@ -2,6 +2,7 @@ package redisdrv
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
@@ -114,5 +115,64 @@ func TestSplitCommand(t *testing.T) {
 	}
 	if _, err := driver.SplitCommand(`GET "open`); err == nil {
 		t.Fatal("unclosed quote should error")
+	}
+}
+
+func TestDumpRestore(t *testing.T) {
+	ctx := context.Background()
+	mr, kv := start(t)
+	mr.Set("s", "hello")
+	mr.SetTTL("s", time.Hour)
+	mr.Set("bin", "\x00\xff")
+	mr.HSet("h", "a", "1", "b", "2")
+	for i := 0; i < 1500; i++ { // more than the display limit
+		mr.Push("l", strconv.Itoa(i))
+	}
+	mr.SetAdd("set", "x", "y")
+	mr.ZAdd("z", 1.5, "m")
+	mr.XAdd("st", "1-1", []string{"f", "v"})
+
+	var dumps []driver.KeyData
+	for _, k := range []string{"s", "bin", "h", "l", "set", "z", "st"} {
+		d, err := kv.Dump(ctx, 0, k)
+		if err != nil || d.Truncated {
+			t.Fatalf("dump %s: %v %+v", k, err, d)
+		}
+		// Round-trip through JSON, as export and import do.
+		b, _ := json.Marshal(d)
+		var back driver.KeyData
+		json.Unmarshal(b, &back)
+		dumps = append(dumps, back)
+	}
+	if dumps[1].Encoding != "base64" || len(dumps[3].Value.([]any)) != 1500 {
+		t.Fatalf("dump shape: %+v", dumps[1])
+	}
+	// Existing keys are skipped unless replace is set.
+	if ok, err := kv.Restore(ctx, 0, dumps[0], false); ok || err != nil {
+		t.Fatalf("skip: %v %v", ok, err)
+	}
+	for _, d := range dumps {
+		if ok, err := kv.Restore(ctx, 1, d, true); !ok || err != nil {
+			t.Fatalf("restore %s: %v", d.Key, err)
+		}
+	}
+	mr.Select(1)
+	if v, _ := mr.Get("bin"); v != "\x00\xff" {
+		t.Errorf("binary %q", v)
+	}
+	if mr.TTL("s") <= 0 || mr.HGet("h", "b") != "2" {
+		t.Error("string ttl / hash")
+	}
+	if l, _ := mr.List("l"); len(l) != 1500 || l[1499] != "1499" {
+		t.Error("list")
+	}
+	if sc, _ := mr.ZScore("z", "m"); sc != 1.5 {
+		t.Error("zset")
+	}
+	if ok, _ := mr.SIsMember("set", "y"); !ok {
+		t.Error("set")
+	}
+	if s, _ := mr.Stream("st"); len(s) != 1 || s[0].ID != "1-1" {
+		t.Error("stream")
 	}
 }

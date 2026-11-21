@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight, Code2, Copy, Layers, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Terminal, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Code2, Copy, Download, Layers, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Terminal, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, newId, type ConnView, type MongoField, type MongoFindResult, type Value } from '@/lib/api'
 import { track } from '@/lib/activity'
@@ -211,6 +211,9 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
             <MenuContent align="end">
               <MenuItem icon={<Copy />} onSelect={() => navigator.clipboard.writeText(coll)}>Copy name</MenuItem>
               <MenuItem icon={<RefreshCw />} onSelect={load}>Reload</MenuItem>
+              <MenuSeparator />
+              <MenuItem icon={<Download />} onSelect={() => openDialog({ kind: 'export', target: { kind: 'collection', connId: conn.id, db, collection: coll, filter, sort: sort ? { [sort.column]: sort.desc ? -1 : 1 } : undefined } })}>Export…</MenuItem>
+              {!conn.readOnly && <MenuItem icon={<Upload />} onSelect={() => openDialog({ kind: 'import', target: { kind: 'collection', connId: conn.id, db, collection: coll } })}>Import…</MenuItem>}
               {!ro && (
                 <>
                   <MenuSeparator />

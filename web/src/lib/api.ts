@@ -174,8 +174,9 @@ export const api = {
       request<MongoFindResult>('POST', `/connections/${id}/mongo/find`, { db, collection, ...q }),
     fields: (id: string, db: string, collection: string) =>
       request<MongoField[]>('GET', `/connections/${id}/mongo/fields?db=${enc(db)}&collection=${enc(collection)}`),
-    insert: (id: string, db: string, collection: string, docs: unknown[]) =>
-      request<{ inserted: number }>('POST', `/connections/${id}/mongo/insert`, { db, collection, docs }),
+    /** `clear` deletes every document first (import "replace"). */
+    insert: (id: string, db: string, collection: string, docs: unknown[], clear = false, confirmed = false) =>
+      request<{ inserted: number }>('POST', `/connections/${id}/mongo/insert`, { db, collection, docs, clear, confirmed }),
     replace: (id: string, db: string, collection: string, docId: unknown, doc: unknown, confirmed = false) =>
       request<void>('POST', `/connections/${id}/mongo/replace`, { db, collection, id: docId, doc, confirmed }),
     delete: (id: string, db: string, collection: string, ids: unknown[], confirmed = false) =>
@@ -195,6 +196,12 @@ export const api = {
   apply: (id: string, ref: TableRef, changes: Change[], dryRun: boolean, confirmed = false) =>
     request<string[]>('POST', `/connections/${id}/apply`, { ...ref, changes, dryRun, confirmed }),
   cancel: (queryId: string) => request<void>('POST', `/queries/${queryId}/cancel`),
+  /** Inserts rows in one transaction; `clear` empties the table first (same transaction). */
+  importRows: (id: string, ref: TableRef, columns: string[], rows: unknown[][], clear = false, confirmed = false) =>
+    request<{ inserted: number }>('POST', `/connections/${id}/import/rows`, { ...ref, columns, rows, clear, confirmed }),
+  /** Writes dumped Redis keys; existing keys are skipped unless `replace`. */
+  redisImport: (id: string, db: number, items: unknown[], replace: boolean, confirmed = false) =>
+    request<{ written: number; skipped: number }>('POST', `/connections/${id}/redis/import`, { db, items, replace, confirmed }),
 }
 
 export const newId = () => Math.random().toString(36).slice(2, 10)

@@ -1,6 +1,7 @@
-import { AlertCircle, CheckCircle2, TerminalSquare } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Download, TerminalSquare } from 'lucide-react'
 import type { Result } from '@/lib/api'
 import { cn } from '@/lib/cn'
+import { openDialog } from '@/lib/dialogs'
 import { DataGrid } from '../grid/DataGrid'
 import { Skeleton } from '../ui/Skeleton'
 
@@ -11,10 +12,12 @@ type Props = {
   error: string
   running: boolean
   empty?: React.ReactNode
+  /** Enables "Export" for row results: the statement runs again (read-only) to export every row. */
+  exportScope?: { connId: string; schema?: string; database?: string }
 }
 
 /** Result tabs (one per statement), grid / message / error, and a status footer. */
-export function Results({ results, active, setActive, error, running, empty }: Props) {
+export function Results({ results, active, setActive, error, running, empty, exportScope }: Props) {
   const r = results?.[active]
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -65,6 +68,14 @@ export function Results({ results, active, setActive, error, running, empty }: P
         <footer className="flex h-7 shrink-0 items-center gap-3 border-t px-3 text-xs text-muted-foreground">
           {r.columns && <span>{(r.rows?.length ?? 0).toLocaleString()} rows{r.truncated ? ' (first 1,000 shown)' : ''}</span>}
           <span>{r.durationMs.toFixed(1)} ms</span>
+          {exportScope && r.columns && (
+            <button
+              onClick={() => openDialog({ kind: 'export', target: { kind: 'query', sql: r.statement, ...exportScope } })}
+              className="-my-1 flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-foreground/80 transition hover:bg-muted hover:text-foreground"
+            >
+              <Download size={12} aria-hidden /> Export
+            </button>
+          )}
           <span className="ml-auto truncate font-mono" title={r.statement}>{r.statement.split('\n')[0]}</span>
         </footer>
       )}

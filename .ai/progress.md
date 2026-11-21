@@ -1,7 +1,7 @@
 # Progress
 
 ## Status
-**Phases 3 (Redis) and 4 (MongoDB) complete** (2026-11-21). Next: Phase 5 (ClickHouse, Neo4j, Memcached, DynamoDB).
+**Import/export complete** (2026-11-21), after v0.1.0. Next: Phase 5 (ClickHouse, Neo4j, Memcached, DynamoDB).
 
 ## Done
 - Requirements gathered (see context.md, decisions.md).
@@ -83,6 +83,13 @@
   - Verified:
     - miniredis unit tests (browse, edit, write classification, command splitting); live MongoDB 9 tests directly and through SSH (`KAROTX_IT_MONGO`).
     - Playwright walkthroughs of both in Edge, light and dark: hash/string/TTL/new key/console on Redis; filter, JSON view, edit, aggregation and drop database on MongoDB.
+
+- Import / export (v0.2 scope, UI first):
+  - Export dialog from table menus, tree menus, the database/collection/Redis tabs and every query result footer. Formats: CSV (separator, header, NULL text), JSON, JSON Lines, SQL INSERTs; database dumps (structure, data, optional DROP, table picker, FK order); MongoDB database → zip; Redis keys → JSON with full values, TTL and base64 for binary.
+  - Exports stream from the server; on Chrome/Edge they stream straight into the file picked with the save dialog, elsewhere they download. Query exports re-run the statement in a read-only session, so every row is exported.
+  - Import dialog: drop or pick CSV/TSV/JSON/JSON Lines → preview → map columns (auto-matched; new tables get inferred types) → batched run with progress, rate and Stop. Options: empty cells as NULL, detect numbers (documents), empty the target first (same transaction as the first batch, production-guarded).
+  - .sql files run statement by statement with live progress and per-statement errors (stop or continue). Redis exports restore with skip/replace. "Copy from another connection" reads any SQL table or Mongo collection page by page.
+  - Verified: Go unit tests (SQLite transfer, literals, row writers, FK order, Redis dump/restore); frontend unit tests (CSV parser, inference, mapping, conversion); Playwright walkthrough in Edge of every SQLite and Redis flow, light and dark. MongoDB and Postgres/MySQL exports were not run live (LampRabit's database runtimes are not installed right now).
 
 ## Next
 - Phase 5: ClickHouse, Neo4j (graph view), Memcached, DynamoDB, UI first.

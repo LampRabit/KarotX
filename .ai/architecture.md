@@ -48,11 +48,12 @@ type Conn interface {                 // every driver
 // Capabilities, type-asserted by the server:
 type TableLister interface { Tables(ctx, schema) ([]TableInfo, error) }          // SQL + Mongo cards
 type SQL interface { Query; Columns; Databases; ForeignKeys; Browse; Apply }      // sqldb (Postgres/MySQL/SQLite)
-type KeyValue interface { Scan; GetKey; Do; IsWrite(args); DBSize }               // redisdrv
-type Document interface { Find; Fields; Insert; Replace; Delete; Aggregate; RunCommand; Create/Drop… } // mongodrv
+type KeyValue interface { Scan; GetKey; Do; IsWrite(args); DBSize; Dump; Restore } // redisdrv
+type Document interface { Find; Fields; Insert; Replace; Delete; Aggregate; RunCommand; Create/Drop…; Each; DeleteAll } // mongodrv
+type Transfer interface { StreamRows; CreateTableSQL; InsertRows; ExecScript; Quote; Literal } // sqldb: export/import
 ```
 
-- The server looks capabilities up per request (`asSQL`, `s.kv`, `s.doc`) and serves `/api/connections/{id}/redis/*` and `/mongo/*` routes. The frontend picks the tab by driver: SQL table tab, Mongo collection tab, Redis key-browser tab.
+- The server looks capabilities up per request (`asSQL`, `s.kv`, `s.doc`) and serves `/api/connections/{id}/redis/*`, `/mongo/*`, `/export` and `/import/*` routes. The frontend picks the tab by driver: SQL table tab, Mongo collection tab, Redis key-browser tab.
 - Read-only and production rules for non-SQL drivers are enforced in the server: Redis classifies commands with `IsWrite` (COMMAND flags plus admin subcommands); MongoDB blocks writes, `$out`/`$merge` stages and non-read commands.
 
 - `Tree` is lazy (expand on demand) so large schemas stay fast.

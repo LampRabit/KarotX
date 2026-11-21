@@ -20,6 +20,11 @@ type KeyValue interface {
 	IsWrite(args []string) bool
 	// DBSize counts keys in a database.
 	DBSize(ctx context.Context, db int) (int64, error)
+	// Dump reads a whole key for export. Binary values are base64 with Encoding set.
+	Dump(ctx context.Context, db int, key string) (*KeyData, error)
+	// Restore writes a dumped key. An existing key is replaced, or left alone
+	// (returning false) unless replace is set.
+	Restore(ctx context.Context, db int, d KeyData, replace bool) (bool, error)
 }
 
 type KeyInfo struct {
@@ -46,8 +51,9 @@ type KeyData struct {
 	TTL       int64  `json:"ttl"`
 	Length    int64  `json:"length"` // string bytes, or number of items
 	Value     any    `json:"value"`
-	Truncated bool   `json:"truncated"` // only the first part of a large value is returned
-	Binary    bool   `json:"binary"`    // contains non-UTF-8 bytes (shown read-only)
+	Truncated bool   `json:"truncated"`          // only the first part of a large value is returned
+	Binary    bool   `json:"binary"`             // contains non-UTF-8 bytes (shown read-only)
+	Encoding  string `json:"encoding,omitempty"` // Dump only: "base64" when strings are base64-encoded
 }
 
 type ZMember struct {

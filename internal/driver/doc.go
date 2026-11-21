@@ -22,6 +22,10 @@ type Document interface {
 	CreateCollection(ctx context.Context, db, coll string) error
 	DropCollection(ctx context.Context, db, coll string) error
 	DropDatabase(ctx context.Context, db string) error
+	// Each streams every matching document (no limit unless q.Limit > 0), for export.
+	Each(ctx context.Context, db, coll string, q FindRequest, fn func(json.RawMessage) error) error
+	// DeleteAll removes every document of a collection, keeping its indexes.
+	DeleteAll(ctx context.Context, db, coll string) (int64, error)
 }
 
 type FindRequest struct {

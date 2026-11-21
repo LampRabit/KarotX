@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight, Code2, Eraser, FileCode2, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Table2, Trash2, Undo2, Wand2, X } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Code2, Download, Eraser, FileCode2, KeyRound, Lock, MoreHorizontal, Pencil, Plus, RefreshCw, Square, Table2, Trash2, Undo2, Upload, Wand2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
 import { api, ApiError, newId, type Change, type ColumnInfo, type ConnView, type Result, type Value } from '@/lib/api'
@@ -307,8 +307,12 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
               <MenuItem icon={<Wand2 />} onSelect={() => openQuery(conn.id, '', schema, database, emptyCommander(table))}>Build a query</MenuItem>
               <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, table), schema, database)}>Query in SQL editor</MenuItem>
               <MenuItem icon={<RefreshCw />} onSelect={load}>Reload <Kbd className="ml-auto">Alt R</Kbd></MenuItem>
+              <MenuSeparator />
+              <MenuItem icon={<Download />} onSelect={() => openDialog({ kind: 'export', target: { kind: 'table', connId: conn.id, ref: tab.table, where, orderBy: sort?.column, desc: sort?.desc } })}>Export…</MenuItem>
+              {!conn.readOnly && <MenuItem icon={<Upload />} onSelect={() => openDialog({ kind: 'import', target: { kind: 'table', connId: conn.id, ref: tab.table } })}>Import…</MenuItem>}
               {!conn.readOnly && (
                 <>
+                  <MenuSeparator />
                   <MenuItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table, database })}>Edit structure…</MenuItem>
                   <MenuSeparator />
                   <MenuItem icon={<Eraser />} danger onSelect={() => openDialog({ kind: 'empty-table', connId: conn.id, ref: tab.table })}>Empty table…</MenuItem>
@@ -322,7 +326,8 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
 
       {showResults ? (
         <div className="min-h-0 flex-1">
-          <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running} />
+          <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running}
+            exportScope={{ connId: conn.id, schema, database }} />
         </div>
       ) : view === 'structure' ? (
         <Structure conn={conn} tab={tab} version={version} />

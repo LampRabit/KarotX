@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Toaster, toast } from 'sonner'
 import { CommandPalette, ShortcutsDialog, useGlobalShortcuts } from '@/components/Palette'
 import { SchemaDialogs } from '@/components/schema/SchemaDialogs'
+import { TransferDialogs } from '@/components/transfer/TransferDialogs'
 import { useWorkspace } from '@/lib/workspace'
 import { Workspace } from '@/components/Workspace'
 import { ConnectionDialog, type ConnectionDialogTarget } from '@/components/connections/ConnectionDialog'
@@ -128,6 +129,7 @@ export function App() {
         <StatusBar session={session} connections={connectionCount} onOpenSecurity={() => openSettings('security')} />
         <ConnectionDialog target={dialog} onClose={() => setDialog(null)} />
         <SchemaDialogs />
+        <TransferDialogs />
         <CommandPalette actions={actions} />
         <ShortcutsDialog />
         <SettingsDialog

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { TableRef } from './api'
+import type { TransferTarget } from './exporter'
 
 /**
  * App-wide dialogs that can be opened from anywhere (tree, tabs, menus, palette).
@@ -16,6 +17,8 @@ export type DialogState =
   | { kind: 'mongo-create'; connId: string; db?: string }
   /** MongoDB: drop a collection, or the whole database when `collection` is omitted. */
   | { kind: 'mongo-drop'; connId: string; db: string; collection?: string }
+  | { kind: 'export'; target: TransferTarget }
+  | { kind: 'import'; target: TransferTarget }
   | { kind: 'palette' }
   | { kind: 'shortcuts' }
   | null

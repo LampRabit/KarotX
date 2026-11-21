@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronDown, Copy, Database, Eraser, Eye, FileCode2, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Table2, Trash2, Wand2 } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Copy, Database, Download, Eraser, Eye, FileCode2, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Table2, Trash2, Upload, Wand2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
 import { api, isSql, type ConnView, type TableInfo } from '@/lib/api'
@@ -216,6 +216,19 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
             <MenuContent align="end">
               <MenuItem icon={<RefreshCw />} onSelect={() => useWorkspace.getState().schemaChanged(conn.id, schema, database)}>Refresh</MenuItem>
               {sql && <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, '', schema, database)}>Open in query editor</MenuItem>}
+              {schema && (
+                <>
+                  <MenuSeparator />
+                  <MenuItem icon={<Download />} onSelect={() => openDialog({ kind: 'export', target: mongo ? { kind: 'mongo-db', connId: conn.id, db: schema } : { kind: 'database', connId: conn.id, schema, database } })}>
+                    Export {label}…
+                  </MenuItem>
+                  {!conn.readOnly && (
+                    <MenuItem icon={<Upload />} onSelect={() => openDialog({ kind: 'import', target: mongo ? { kind: 'mongo-db', connId: conn.id, db: schema } : { kind: 'database', connId: conn.id, schema, database } })}>
+                      Import…
+                    </MenuItem>
+                  )}
+                </>
+              )}
               {conn.driver !== 'sqlite' && !conn.readOnly && (
                 <>
                   <MenuItem icon={<Plus />} onSelect={newContainer}>New {label}…</MenuItem>
@@ -231,7 +244,8 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
       {/* Body */}
       <div className="relative min-h-0 flex-1">
         {showResults ? (
-          <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running} />
+          <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running}
+            exportScope={{ connId: conn.id, schema, database }} />
         ) : error ? (
           <ErrorPanel message={error} />
         ) : !tables ? (
@@ -262,6 +276,11 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                         {sql && <CtxItem icon={<Wand2 />} onSelect={() => openQuery(conn.id, '', schema, database, emptyCommander(t.name))}>Build a query</CtxItem>}
                         {sql && <CtxItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, t.name), schema, database)}>Query in editor</CtxItem>}
                         <CtxItem icon={<Copy />} onSelect={() => navigator.clipboard.writeText(t.name).then(() => toast.success('Copied name', { duration: 1200 }))}>Copy name</CtxItem>
+                        <CtxSeparator />
+                        <CtxItem icon={<Download />} onSelect={() => openDialog({ kind: 'export', target: mongo ? { kind: 'collection', connId: conn.id, db: schema, collection: t.name } : { kind: 'table', connId: conn.id, ref: ref(t) } })}>Export…</CtxItem>
+                        {!conn.readOnly && t.kind === 'table' && (
+                          <CtxItem icon={<Upload />} onSelect={() => openDialog({ kind: 'import', target: mongo ? { kind: 'collection', connId: conn.id, db: schema, collection: t.name } : { kind: 'table', connId: conn.id, ref: ref(t) } })}>Import…</CtxItem>
+                        )}
                         {!conn.readOnly && sql && t.kind === 'table' && (
                           <>
                             <CtxSeparator />

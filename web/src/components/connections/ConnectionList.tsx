@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
-  ChevronRight, Columns3, Copy, Database, Eraser, Eye, FileCode2, Folder, KeyRound, LayoutGrid, MoreHorizontal,
-  Pencil, Plug, Plus, RefreshCw, Table2, Trash2, Unplug, Wand2,
+  ChevronRight, Columns3, Copy, Database, Download, Eraser, Eye, FileCode2, Folder, KeyRound, LayoutGrid, MoreHorizontal,
+  Pencil, Plug, Plus, RefreshCw, Table2, Trash2, Unplug, Upload, Wand2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
@@ -11,6 +11,7 @@ import { kindOf } from '@/lib/databases'
 import { selectSql } from '@/lib/ddl'
 import { emptyCommander } from '@/lib/commander'
 import { openDialog } from '@/lib/dialogs'
+import type { TransferTarget } from '@/lib/exporter'
 import { containerOf, isServerDatabase, tableRefOf, treeKey, useWorkspace } from '@/lib/workspace'
 import { BrandIcon } from '../BrandIcon'
 import { Confirm } from '../ui/Confirm'
@@ -100,6 +101,16 @@ function TreeLevel({ conn, path, depth }: { conn: ConnView; path: string[]; dept
   )
 }
 
+/** Export… / Import… menu items (import hidden on read-only connections). */
+function transferItems(target: TransferTarget, readOnly?: boolean, Item: typeof CtxItem | typeof MenuItem = CtxItem) {
+  return (
+    <>
+      <Item icon={<Download />} onSelect={() => openDialog({ kind: 'export', target })}>Export…</Item>
+      {!readOnly && <Item icon={<Upload />} onSelect={() => openDialog({ kind: 'import', target })}>Import…</Item>}
+    </>
+  )
+}
+
 function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorkspace.getState>): ReactNode {
   const ro = conn.readOnly
   if ((node.kind === 'table' || node.kind === 'view') && conn.driver === 'mongodb') {
@@ -109,6 +120,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
         <CtxLabel>{node.name}</CtxLabel>
         <CtxItem icon={<Table2 />} shortcut="Enter" onSelect={() => ws.openTable(conn.id, ref)}>Open collection</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+        <CtxSeparator />
+        {transferItems({ kind: 'collection', connId: conn.id, db: ref.schema, collection: node.name }, ro)}
         {!ro && (
           <>
             <CtxSeparator />
@@ -128,6 +141,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
         <CtxItem icon={<Wand2 />} onSelect={() => ws.openQuery(conn.id, '', schema, database, emptyCommander(node.name))}>Build a query</CtxItem>
         <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, selectSql(conn.driver, schema, node.name), schema, database)}>Query in SQL editor</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+        <CtxSeparator />
+        {transferItems({ kind: 'table', connId: conn.id, ref }, ro || node.kind === 'view')}
         {!ro && node.kind === 'table' && (
           <>
             <CtxSeparator />
@@ -165,6 +180,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
         <CtxLabel>{node.name}</CtxLabel>
         <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openDatabase(conn.id, node.path[0])}>Browse keys</CtxItem>
         <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, [], true)}>Refresh</CtxItem>
+        <CtxSeparator />
+        {transferItems({ kind: 'redis', connId: conn.id, db: Number(node.path[0]) }, ro)}
       </>
     )
   }
@@ -175,6 +192,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
         <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openDatabase(conn.id, node.name)}>Open database</CtxItem>
         <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, node.path, true)}>Refresh</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+        <CtxSeparator />
+        {transferItems({ kind: 'mongo-db', connId: conn.id, db: node.name }, ro)}
         {!ro && (
           <>
             <CtxSeparator />
@@ -194,6 +213,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
         <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, '', schema, database)}>New query here</CtxItem>
         <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, node.path, true)}>Refresh</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+        <CtxSeparator />
+        {transferItems({ kind: 'database', connId: conn.id, schema, database }, ro)}
         {!ro && (
           <>
             <CtxSeparator />
@@ -304,6 +325,7 @@ function ConnectionActions({ conn, onEdit, onDelete, Item, Sep }: {
       {conn.driver === 'mongodb' && !conn.readOnly && (
         <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id })}>New database…</Item>
       )}
+      {conn.driver === 'sqlite' && transferItems({ kind: 'database', connId: conn.id, schema: 'main' }, conn.readOnly, Item)}
       <Item icon={<Pencil />} onSelect={() => onEdit(conn)}>Edit connection…</Item>
       <Item icon={<Copy />} onSelect={() => copy(conn.driver === 'sqlite' ? conn.file ?? '' : `${conn.host}:${conn.port ?? ''}`)}>Copy address</Item>
       <Sep />

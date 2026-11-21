@@ -358,6 +358,7 @@ export function QueryCommander({ conn, tab, runner, onEditSql }: { conn: ConnVie
         </div>
         <div className="min-h-0 flex-1">
           <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running}
+            exportScope={{ connId: conn.id, schema: tab.schema, database: tab.database }}
             empty={
               <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-muted-foreground">
                 <Play size={22} aria-hidden />

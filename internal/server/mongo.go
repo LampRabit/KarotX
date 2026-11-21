@@ -107,14 +107,21 @@ func (s *Server) mongoFields(w http.ResponseWriter, r *http.Request) {
 func (s *Server) mongoInsert(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		collReq
-		Docs []json.RawMessage `json:"docs"`
+		Docs  []json.RawMessage `json:"docs"`
+		Clear bool              `json:"clear"` // delete every document first (import)
 	}
-	if !readJSON(w, r, &b) {
+	if !readBig(w, r, &b) {
 		return
 	}
 	d, ok := s.doc(w, r)
-	if !ok || !s.writeGuard(w, r, b.Confirmed, false, "") {
+	if !ok || !s.writeGuard(w, r, b.Confirmed, b.Clear, "Delete every document in "+b.Collection+" before importing") {
 		return
+	}
+	if b.Clear {
+		if _, err := d.DeleteAll(r.Context(), b.DB, b.Collection); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	n, err := d.Insert(r.Context(), b.DB, b.Collection, b.Docs)
 	if err != nil {

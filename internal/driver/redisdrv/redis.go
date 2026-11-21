@@ -3,6 +3,7 @@ package redisdrv
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -244,7 +245,16 @@ func ttlMs(d time.Duration) int64 {
 }
 
 func (r *conn) GetKey(ctx context.Context, db int, key string) (*driver.KeyData, error) {
+	return r.getKey(ctx, db, key, false)
+}
+
+// getKey reads a key; full reads the whole value (export) instead of the first part.
+func (r *conn) getKey(ctx context.Context, db int, key string, full bool) (*driver.KeyData, error) {
 	cl := r.client(db)
+	items, str := int64(maxItems), int64(maxString)
+	if full {
+		items, str = 1<<62, 1<<62
+	}
 	typ, err := cl.Type(ctx, key).Result()
 	if err != nil {
 		return nil, err
@@ -264,12 +274,12 @@ func (r *conn) GetKey(ctx context.Context, db int, key string) (*driver.KeyData,
 	switch typ {
 	case "string":
 		d.Length, _ = cl.StrLen(ctx, key).Result()
-		v, err := cl.GetRange(ctx, key, 0, maxString-1).Result()
+		v, err := cl.GetRange(ctx, key, 0, min(str, 1<<40)-1).Result()
 		if err != nil {
 			return nil, err
 		}
 		bin(v)
-		d.Value, d.Truncated = v, d.Length > maxString
+		d.Value, d.Truncated = v, d.Length > str
 	case "hash":
 		d.Length, _ = cl.HLen(ctx, key).Result()
 		pairs := [][2]string{}
@@ -284,7 +294,7 @@ func (r *conn) GetKey(ctx context.Context, db int, key string) (*driver.KeyData,
 				pairs = append(pairs, [2]string{kv[i], kv[i+1]})
 			}
 			cur = next
-			if cur == 0 || len(pairs) >= maxItems {
+			if cur == 0 || int64(len(pairs)) >= items {
 				break
 			}
 		}
@@ -292,12 +302,12 @@ func (r *conn) GetKey(ctx context.Context, db int, key string) (*driver.KeyData,
 		d.Value, d.Truncated = pairs, int64(len(pairs)) < d.Length
 	case "list":
 		d.Length, _ = cl.LLen(ctx, key).Result()
-		items, err := cl.LRange(ctx, key, 0, maxItems-1).Result()
+		list, err := cl.LRange(ctx, key, 0, min(items, 1<<40)-1).Result()
 		if err != nil {
 			return nil, err
 		}
-		bin(items...)
-		d.Value, d.Truncated = items, int64(len(items)) < d.Length
+		bin(list...)
+		d.Value, d.Truncated = list, int64(len(list)) < d.Length
 	case "set":
 		d.Length, _ = cl.SCard(ctx, key).Result()
 		members := []string{}
@@ -309,7 +319,7 @@ func (r *conn) GetKey(ctx context.Context, db int, key string) (*driver.KeyData,
 			}
 			members = append(members, batch...)
 			cur = next
-			if cur == 0 || len(members) >= maxItems {
+			if cur == 0 || int64(len(members)) >= items {
 				break
 			}
 		}
@@ -318,7 +328,7 @@ func (r *conn) GetKey(ctx context.Context, db int, key string) (*driver.KeyData,
 		d.Value, d.Truncated = members, int64(len(members)) < d.Length
 	case "zset":
 		d.Length, _ = cl.ZCard(ctx, key).Result()
-		zs, err := cl.ZRangeWithScores(ctx, key, 0, maxItems-1).Result()
+		zs, err := cl.ZRangeWithScores(ctx, key, 0, min(items, 1<<40)-1).Result()
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +341,12 @@ func (r *conn) GetKey(ctx context.Context, db int, key string) (*driver.KeyData,
 		d.Value, d.Truncated = out, int64(len(out)) < d.Length
 	case "stream":
 		d.Length, _ = cl.XLen(ctx, key).Result()
-		msgs, err := cl.XRevRangeN(ctx, key, "+", "-", 200).Result()
+		var msgs []redis.XMessage
+		if full {
+			msgs, err = cl.XRange(ctx, key, "-", "+").Result()
+		} else {
+			msgs, err = cl.XRevRangeN(ctx, key, "+", "-", 200).Result()
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -439,4 +454,135 @@ func keyCount(n int64) string {
 		return "1 key"
 	}
 	return fmt.Sprintf("%d keys", n)
+}
+
+func (r *conn) Dump(ctx context.Context, db int, key string) (*driver.KeyData, error) {
+	d, err := r.getKey(ctx, db, key, true)
+	if err != nil || !d.Binary {
+		return d, err
+	}
+	// JSON strings can't carry arbitrary bytes, so binary keys travel as base64.
+	enc := func(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+	switch v := d.Value.(type) {
+	case string:
+		d.Value = enc(v)
+	case []string:
+		for i := range v {
+			v[i] = enc(v[i])
+		}
+	case [][2]string:
+		for i := range v {
+			v[i] = [2]string{enc(v[i][0]), enc(v[i][1])}
+		}
+	case []driver.ZMember:
+		for i := range v {
+			v[i].Member = enc(v[i].Member)
+		}
+	case []driver.StreamEntry:
+		for i, e := range v {
+			f := make(map[string]string, len(e.Fields))
+			for k, x := range e.Fields {
+				f[enc(k)] = enc(x)
+			}
+			v[i].Fields = f
+		}
+	}
+	d.Encoding = "base64"
+	return d, nil
+}
+
+func (r *conn) Restore(ctx context.Context, db int, d driver.KeyData, replace bool) (bool, error) {
+	cl := r.client(db)
+	if !replace {
+		if n, err := cl.Exists(ctx, d.Key).Result(); err != nil || n > 0 {
+			return false, err
+		}
+	}
+	dec := func(s string) (string, error) { return s, nil }
+	if d.Encoding == "base64" {
+		dec = func(s string) (string, error) {
+			b, err := base64.StdEncoding.DecodeString(s)
+			return string(b), err
+		}
+	}
+	// str reads a (decoded) string from JSON-decoded data.
+	var bad error
+	str := func(v any) string {
+		s, ok := v.(string)
+		if !ok {
+			s = fmt.Sprint(v)
+		}
+		out, err := dec(s)
+		if err != nil && bad == nil {
+			bad = err
+		}
+		return out
+	}
+	list, _ := d.Value.([]any)
+	const chunk = 500
+	p := cl.TxPipeline()
+	p.Del(ctx, d.Key)
+	add := func(cmd func(args []any), per int, item func(v any) []any) {
+		var args []any
+		for _, v := range list {
+			args = append(args, item(v)...)
+			if len(args) >= chunk*per {
+				cmd(args)
+				args = nil
+			}
+		}
+		if len(args) > 0 {
+			cmd(args)
+		}
+	}
+	switch d.Type {
+	case "string":
+		p.Set(ctx, d.Key, str(d.Value), 0)
+	case "hash":
+		add(func(a []any) { p.HSet(ctx, d.Key, a...) }, 2, func(v any) []any {
+			kv, _ := v.([]any)
+			if len(kv) != 2 {
+				bad = errors.New("hash items must be [field, value] pairs")
+				return nil
+			}
+			return []any{str(kv[0]), str(kv[1])}
+		})
+	case "list":
+		add(func(a []any) { p.RPush(ctx, d.Key, a...) }, 1, func(v any) []any { return []any{str(v)} })
+	case "set":
+		add(func(a []any) { p.SAdd(ctx, d.Key, a...) }, 1, func(v any) []any { return []any{str(v)} })
+	case "zset":
+		var zs []redis.Z
+		for _, v := range list {
+			m, _ := v.(map[string]any)
+			score, _ := m["score"].(float64)
+			zs = append(zs, redis.Z{Member: str(m["member"]), Score: score})
+		}
+		for i := 0; i < len(zs); i += chunk {
+			p.ZAdd(ctx, d.Key, zs[i:min(i+chunk, len(zs))]...)
+		}
+	case "stream":
+		for _, v := range list {
+			m, _ := v.(map[string]any)
+			fields, _ := m["fields"].(map[string]any)
+			vals := make([]any, 0, len(fields)*2)
+			for k, x := range fields {
+				vals = append(vals, str(k), str(x))
+			}
+			id, _ := m["id"].(string)
+			p.XAdd(ctx, &redis.XAddArgs{Stream: d.Key, ID: id, Values: vals})
+		}
+	default:
+		return false, fmt.Errorf("%s: type %q can't be imported", d.Key, d.Type)
+	}
+	if bad != nil {
+		return false, fmt.Errorf("%s: %w", d.Key, bad)
+	}
+	if d.TTL > 0 {
+		p.PExpire(ctx, d.Key, time.Duration(d.TTL)*time.Millisecond)
+	}
+	if _, err := p.Exec(ctx); err != nil {
+		return false, fmt.Errorf("%s: %w", d.Key, err)
+	}
+	return true, nil
 }

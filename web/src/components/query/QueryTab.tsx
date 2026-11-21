@@ -96,7 +96,8 @@ export function QueryTab({ tab, conn }: { tab: QTab; conn: ConnView }) {
       ) : (
         <>
           <div className="min-h-0 flex-1">
-            <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running} empty={empty} />
+            <Results results={runner.results} active={runner.active} setActive={runner.setActive} error={runner.error} running={!!runner.running} empty={empty}
+              exportScope={{ connId: conn.id, schema: tab.schema, database: tab.database }} />
           </div>
 
           <QueryComposer

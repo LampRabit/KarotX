@@ -467,3 +467,38 @@ func PipelineWrites(pipeline json.RawMessage) bool {
 	s := string(pipeline)
 	return strings.Contains(s, `"$out"`) || strings.Contains(s, `"$merge"`)
 }
+
+func (m *conn) Each(ctx context.Context, db, coll string, q driver.FindRequest, fn func(json.RawMessage) error) error {
+	filter, err := parse(q.Filter)
+	if err != nil {
+		return err
+	}
+	o := options.Find()
+	if q.Limit > 0 {
+		o.SetLimit(q.Limit)
+	}
+	if s, err := parse(q.Sort); err != nil {
+		return err
+	} else if len(s) > 0 {
+		o.SetSort(s)
+	}
+	cur, err := m.client.Database(db).Collection(coll).Find(ctx, filter, o)
+	if err != nil {
+		return err
+	}
+	defer cur.Close(ctx)
+	for cur.Next(ctx) {
+		if err := fn(ext(cur.Current)); err != nil {
+			return err
+		}
+	}
+	return cur.Err()
+}
+
+func (m *conn) DeleteAll(ctx context.Context, db, coll string) (int64, error) {
+	res, err := m.client.Database(db).Collection(coll).DeleteMany(ctx, bson.D{})
+	if err != nil {
+		return 0, err
+	}
+	return res.DeletedCount, nil
+}
