@@ -42,6 +42,8 @@ type State struct {
 	Connections []model.Connection `json:"connections"`
 	Tabs        []json.RawMessage  `json:"tabs"`
 	ActiveTab   string             `json:"activeTab,omitempty"`
+	// Expanded holds the sidebar tree nodes that were open, so they reopen on restart.
+	Expanded []string `json:"expanded,omitempty"`
 }
 
 type Settings struct {

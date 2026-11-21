@@ -51,3 +51,11 @@ Newest at the bottom. Format: **date — decision.** Why.
   - Pushing a `v*` tag publishes a GitHub Release with archives for linux/darwin/windows × amd64/arm64 (CGO off) and checksums.
   - The version is injected with `-X main.version`.
   - The owner will protect `main` once development settles, so CI must stay green.
+- **2026-11-21 — UI first, query second** is the guiding principle (owner directive). Every task must work through the UI, and SQL or command input is the fallback, never the primary path. Recorded in context.md and README rule 0.
+- **2026-11-21 — Postgres multi-database:**
+  - The tree root lists the server's databases (`pg_database`). Each database gets its own independent session, keyed `id\x00db` in the connection manager, with its own pool and tunnel.
+  - Node paths are `[db, schema, table, column]`. API calls take `db` / `database`, and `TableRef.database` is optional.
+  - Dropping a database first closes our own session on it (`POST /disconnect?db=`), then runs `DROP DATABASE` on the main session.
+  - If listing databases fails (restricted roles), the tree falls back to schemas at the root.
+- **2026-11-21 — Expanded sidebar folders are saved in the workspace** (`expanded` in the .kxs) and restored on start. This revises the earlier "connections and tabs only" rule: tree position is part of "resume where you left off".
+- **2026-11-21 — Live tests are env-gated** (`KAROTX_IT_PG`, `KAROTX_IT_MYSQL`) and use in-process SSH servers (`internal/tunnel/sshtest`), so the SSH paths are tested without external infrastructure. CI runs unit tests only.

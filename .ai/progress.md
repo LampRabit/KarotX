@@ -1,7 +1,7 @@
 # Progress
 
 ## Status
-Phase 1 done, plus the 2026-11-18 UX round (below). Next: Phase 2 (Query Commander).
+**Phase 1 complete** (2026-11-21), all caveats closed. Next: Phase 2 (Query Commander, built UI-first).
 
 ## Done
 - Requirements gathered (see context.md, decisions.md).
@@ -21,7 +21,7 @@ Phase 1 done, plus the 2026-11-18 UX round (below). Next: Phase 2 (Query Command
     - Go tests (splitter, SQLite end-to-end).
     - A Playwright UI walkthrough on SQLite.
     - API end-to-end on LampRabit's Postgres 18 and MariaDB 12: types, edits, cancel, production guard, read-only.
-  - **Not yet verified live:** an SSH tunnel (no SSH server available), TLS verify with custom CA/client certs, and Oracle MySQL (only MariaDB was tested).
+  - Live verification gaps were closed on 2026-11-21 (see below).
 
 - 2026-11-18 UX round (owner feedback):
   - SQLite file browser.
@@ -44,11 +44,29 @@ Phase 1 done, plus the 2026-11-18 UX round (below). Next: Phase 2 (Query Command
 
 - Release pipeline: CI (UI build, gofmt, vet, race tests, cross-platform GoReleaser dry run) is green on GitHub. Pushing a `v*` tag publishes a release. No release has been tagged yet.
 
+- 2026-11-21 Phase 1 completion:
+  - Guiding principle recorded: **UI first, query second** (context.md, README rule 0).
+  - SSH tunnels are verified with in-process SSH servers (`internal/tunnel/sshtest`):
+    - Password, key, key with passphrase, and agent logins.
+    - Two-hop jump hosts.
+    - Host-key trust on first contact, changed-key warning, and known_hosts.
+    - Live: Postgres 18, MariaDB 12 and MySQL 26 through a two-hop tunnel.
+  - TLS:
+    - Unit tests with a generated CA run real handshakes for verify, host-name mismatch, unknown CA, require, and client certificates.
+    - Live: MariaDB and MySQL connect encrypted, and verify refuses their self-signed certificates.
+    - The local Postgres has TLS off, so its live TLS case is skipped; the pgx TLS options are unit-tested.
+  - Oracle MySQL 26 passes the full API suites (queries, edits, production guard, read-only, designer DDL, scope isolation, primary-key moves).
+  - Postgres database switcher:
+    - The tree lists the server's databases; each database gets its own session.
+    - The database tab shows a Database / Schema picker.
+    - Create and drop database or schema from the UI.
+  - Expanded sidebar folders are saved in the workspace and restored (they reconnect and load on start).
+  - Live tests run with `KAROTX_IT_PG` / `KAROTX_IT_MYSQL` (see README → Develop).
+
 ## Next
-- Phase 2: Query Commander (visual query builder).
-- Known gaps to pick up:
-  - Expanded tree state isn't persisted.
-  - Postgres shows only the connected database (no database switcher yet).
+- Phase 2: Query Commander, UI-first.
+  - A visual builder (tables, columns, FK-aware joins, filters, grouping, sorting) with live, editable SQL as the second view.
+  - The same filter builder replaces the raw WHERE box as the table filter's main mode (raw WHERE stays as an option).
 
 ## Open questions
 None right now.

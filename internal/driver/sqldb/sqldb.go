@@ -31,6 +31,8 @@ type dialect interface {
 	columns(ctx context.Context, db *sql.DB, t driver.TableRef) ([]driver.ColumnInfo, error)
 	// useSchema returns the statement that scopes a session to schema ("" = unsupported).
 	useSchema(schema string) string
+	// databases lists the server's databases when a connection is bound to one (nil = not applicable).
+	databases(ctx context.Context, db *sql.DB) ([]string, error)
 }
 
 // Driver adapts a dialect to driver.Driver.
@@ -131,6 +133,10 @@ func (c *conn) Tables(ctx context.Context, schema string) ([]driver.TableInfo, e
 
 func (c *conn) Columns(ctx context.Context, t driver.TableRef) ([]driver.ColumnInfo, error) {
 	return c.d.columns(ctx, c.db, t)
+}
+
+func (c *conn) Databases(ctx context.Context) ([]string, error) {
+	return c.d.databases(ctx, c.db)
 }
 
 func (c *conn) qualify(t driver.TableRef) string {

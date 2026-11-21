@@ -3,6 +3,20 @@
 **KarotX** is a database client that ships as a single binary. You start it from a terminal (like mailpit) and use it in the browser.
 It ships under the **LampRabit** namespace and brand. It will later be bundled into LampRabit as a service, and it is also published standalone so anyone can use it.
 
+## Guiding principle: UI first, query second
+
+Every task must be doable through the UI: clicking, picking, dragging, forms and visual builders. Writing SQL or commands is the **second choice**, always available for power users but never the only or the main path.
+
+When designing a feature:
+- Start from "how does a user do this without typing a query?".
+- Then expose the generated SQL or command, so it can be reviewed, edited or copied.
+
+Examples:
+- Filters are built by picking a column, an operator and a value, with a raw WHERE as an alternative.
+- Tables are created and changed in the designer.
+- Rows are edited in the grid.
+- The Query Commander builds SQL visually.
+
 ## Core requirements
 
 1. **Many connections at once, no lag.** Each connection is isolated: its own pool, its own cancellation, and no global locks on the query path. A slow query on one database never blocks another.

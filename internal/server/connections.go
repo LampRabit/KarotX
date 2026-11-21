@@ -122,31 +122,59 @@ func (s *Server) connect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) disconnect(w http.ResponseWriter, r *http.Request) {
-	s.opt.Conns.Disconnect(r.PathValue("id"))
+	if db := r.URL.Query().Get("db"); db != "" {
+		s.opt.Conns.DisconnectDB(r.PathValue("id"), db) // e.g. before dropping that database
+	} else {
+		s.opt.Conns.Disconnect(r.PathValue("id"))
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// tree lists children of a node. For Postgres the root lists the server's
+// databases; children of a database are requested with ?db=<name> and their
+// paths are prefixed with it, so node paths stay unique across databases.
 func (s *Server) tree(w http.ResponseWriter, r *http.Request) {
-	c, err := s.opt.Conns.Session(r.Context(), r.PathValue("id"))
+	id, q := r.PathValue("id"), r.URL.Query()
+	db, path := q.Get("db"), q["path"]
+	c, err := s.opt.Conns.SessionDB(r.Context(), id, db)
 	if err != nil {
 		connErr(w, err)
 		return
 	}
-	nodes, err := c.Tree(r.Context(), r.URL.Query()["path"])
+	if db == "" && len(path) == 0 {
+		if dbs, err := c.Databases(r.Context()); err == nil && dbs != nil {
+			nodes := make([]driver.Node, len(dbs))
+			for i, name := range dbs {
+				nodes[i] = driver.Node{Name: name, Kind: "database", Path: []string{name}, HasChildren: true}
+				if name == c.Info().Database {
+					nodes[i].Detail = "default"
+				}
+			}
+			writeJSON(w, nodes)
+			return
+		}
+	}
+	nodes, err := c.Tree(r.Context(), path)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
+	}
+	if db != "" {
+		for i := range nodes {
+			nodes[i].Path = append([]string{db}, nodes[i].Path...)
+		}
 	}
 	writeJSON(w, nodes)
 }
 
 func (s *Server) tables(w http.ResponseWriter, r *http.Request) {
-	c, err := s.opt.Conns.Session(r.Context(), r.PathValue("id"))
+	q := r.URL.Query()
+	c, err := s.opt.Conns.SessionDB(r.Context(), r.PathValue("id"), q.Get("db"))
 	if err != nil {
 		connErr(w, err)
 		return
 	}
-	t, err := c.Tables(r.Context(), r.URL.Query().Get("schema"))
+	t, err := c.Tables(r.Context(), q.Get("schema"))
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -155,12 +183,12 @@ func (s *Server) tables(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) columns(w http.ResponseWriter, r *http.Request) {
-	c, err := s.opt.Conns.Session(r.Context(), r.PathValue("id"))
+	q := r.URL.Query()
+	c, err := s.opt.Conns.SessionDB(r.Context(), r.PathValue("id"), q.Get("db"))
 	if err != nil {
 		connErr(w, err)
 		return
 	}
-	q := r.URL.Query()
 	cols, err := c.Columns(r.Context(), driver.TableRef{Schema: q.Get("schema"), Table: q.Get("table")})
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
@@ -193,6 +221,7 @@ func (s *Server) guard(w http.ResponseWriter, id string, confirmed bool, risky [
 func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		SQL       string `json:"sql"`
+		Database  string `json:"database"`
 		Schema    string `json:"schema"`
 		QueryID   string `json:"queryId"`
 		MaxRows   int    `json:"maxRows"`
@@ -211,7 +240,7 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 	if !s.guard(w, id, b.Confirmed, risky) {
 		return
 	}
-	c, err := s.opt.Conns.Session(r.Context(), id)
+	c, err := s.opt.Conns.SessionDB(r.Context(), id, b.Database)
 	if err != nil {
 		connErr(w, err)
 		return
@@ -236,7 +265,7 @@ func (s *Server) browse(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &b) {
 		return
 	}
-	c, err := s.opt.Conns.Session(r.Context(), r.PathValue("id"))
+	c, err := s.opt.Conns.SessionDB(r.Context(), r.PathValue("id"), b.Database)
 	if err != nil {
 		connErr(w, err)
 		return
@@ -263,7 +292,7 @@ func (s *Server) apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	c, err := s.opt.Conns.Session(r.Context(), id)
+	c, err := s.opt.Conns.SessionDB(r.Context(), id, b.Database)
 	if err != nil {
 		connErr(w, err)
 		return
@@ -296,12 +325,13 @@ func (s *Server) saveWorkspace(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Tabs      []json.RawMessage `json:"tabs"`
 		ActiveTab string            `json:"activeTab"`
+		Expanded  []string          `json:"expanded"`
 	}
 	if !readJSON(w, r, &b) {
 		return
 	}
 	if err := s.opt.Store.Update(func(st *state.State) {
-		st.Tabs, st.ActiveTab = b.Tabs, b.ActiveTab
+		st.Tabs, st.ActiveTab, st.Expanded = b.Tabs, b.ActiveTab, b.Expanded
 	}); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

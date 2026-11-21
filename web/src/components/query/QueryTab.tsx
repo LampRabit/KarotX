@@ -15,21 +15,27 @@ export { ErrorPanel } from './Results'
 
 type QTab = Extract<Tab, { kind: 'query' }>
 
-/** Table → columns from whatever schema the sidebar has loaded, for autocomplete. */
-export function useSchema(connId: string, schema?: string) {
+/** Table → columns from whatever the sidebar has loaded (for this schema/database), for autocomplete. */
+export function useSchema(connId: string, schema?: string, database?: string) {
   const trees = useWorkspace((s) => s.trees)
   return useMemo(() => {
     const out: Record<string, string[]> = {}
     for (const [key, entry] of Object.entries(trees)) {
       if (!key.startsWith(connId) || !entry.nodes) continue
       for (const n of entry.nodes) {
-        if (schema && n.path[0] !== schema && n.path.length > 1) continue
-        if (n.kind === 'table' || n.kind === 'view') out[n.name] ??= []
-        if (n.kind === 'column') (out[n.path[n.path.length - 2]] ??= []).push(n.name)
+        if (n.kind !== 'table' && n.kind !== 'view' && n.kind !== 'column') continue
+        // Paths end with …, schema, table[, column]; Postgres paths start with the database.
+        const tableIdx = n.kind === 'column' ? n.path.length - 2 : n.path.length - 1
+        const nodeSchema = n.path[tableIdx - 1]
+        const nodeDb = tableIdx === 2 ? n.path[0] : undefined
+        if (schema && nodeSchema !== schema) continue
+        if (database && nodeDb && nodeDb !== database) continue
+        if (n.kind === 'column') (out[n.path[tableIdx]] ??= []).push(n.name)
+        else out[n.name] ??= []
       }
     }
     return out
-  }, [trees, connId, schema])
+  }, [trees, connId, schema, database])
 }
 
 /** Run the editor's selection, or the whole text. */
@@ -42,10 +48,10 @@ export function selectionOr(ref: React.RefObject<ReactCodeMirrorRef | null>, all
 /** A query tab: results fill the space, the query box sits at the bottom (like database and table tabs). */
 export function QueryTab({ tab, conn }: { tab: QTab; conn: ConnView }) {
   const updateTab = useWorkspace((s) => s.updateTab)
-  const runner = useQueryRunner(conn, tab.schema)
+  const runner = useQueryRunner(conn, tab.schema, tab.database)
   const elapsed = useElapsed(!!runner.running)
-  const schema = useSchema(conn.id, tab.schema)
-  const scope = tab.schema || conn.info?.database || conn.database || conn.name
+  const schema = useSchema(conn.id, tab.schema, tab.database)
+  const scope = [tab.database, tab.schema].filter(Boolean).join('.') || conn.info?.database || conn.database || conn.name
 
   const empty = (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -65,7 +71,7 @@ export function QueryTab({ tab, conn }: { tab: QTab; conn: ConnView }) {
         <BrandIcon db={kindOf(conn)} size={22} className="rounded-md" />
         <div className="flex min-w-0 items-baseline gap-2">
           <h2 className="truncate font-semibold">{tab.title}</h2>
-          <span className="truncate text-xs text-muted-foreground">{conn.name}{tab.schema ? ` · ${tab.schema}` : ''}</span>
+          <span className="truncate text-xs text-muted-foreground">{conn.name}{tab.database ? ` · ${tab.database}` : ''}{tab.schema ? ` · ${tab.schema}` : ''}</span>
         </div>
         {conn.production && (
           <span className="ml-auto shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-semibold text-destructive">PRODUCTION{conn.readOnly ? ' · READ-ONLY' : ''}</span>

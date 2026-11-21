@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   ChevronRight, Columns3, Copy, Database, Eraser, Eye, FileCode2, Folder, KeyRound, LayoutGrid, MoreHorizontal,
   Pencil, Plug, Plus, RefreshCw, Table2, Trash2, Unplug,
@@ -8,9 +8,9 @@ import { toast } from 'sonner'
 import type { ConnView, TreeNode } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
-import { containerName, selectSql } from '@/lib/ddl'
+import { selectSql } from '@/lib/ddl'
 import { openDialog } from '@/lib/dialogs'
-import { treeKey, useWorkspace } from '@/lib/workspace'
+import { containerOf, isServerDatabase, tableRefOf, treeKey, useWorkspace } from '@/lib/workspace'
 import { BrandIcon } from '../BrandIcon'
 import { Confirm } from '../ui/Confirm'
 import { ContextMenu, CtxItem, CtxLabel, CtxSeparator } from '../ui/ContextMenu'
@@ -71,6 +71,10 @@ function TreeLevel({ conn, path, depth }: { conn: ConnView; path: string[]; dept
   const entry = useWorkspace((s) => s.trees[key])
   const { loadTree } = useWorkspace()
   const pad = { paddingLeft: depth * 14 + 26 }
+  // Expanded nodes restored from the workspace file load their children on first render.
+  useEffect(() => {
+    if (!entry) loadTree(conn.id, path)
+  }, [entry, conn.id, path, loadTree])
 
   if (!entry || (entry.loading && !entry.nodes)) {
     return (
@@ -98,38 +102,59 @@ function TreeLevel({ conn, path, depth }: { conn: ConnView; path: string[]; dept
 function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorkspace.getState>): ReactNode {
   const ro = conn.readOnly
   if (node.kind === 'table' || node.kind === 'view') {
-    const schema = node.path[0]
-    const ref = { schema, table: node.name }
+    const ref = tableRefOf(node)
+    const { schema, database } = ref
     return (
       <>
         <CtxLabel>{node.name}</CtxLabel>
         <CtxItem icon={<Table2 />} shortcut="Enter" onSelect={() => ws.openTable(conn.id, ref)}>Open data</CtxItem>
-        <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, selectSql(conn.driver, schema, node.name), schema)}>Query in editor</CtxItem>
+        <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, selectSql(conn.driver, schema, node.name), schema, database)}>Query in editor</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
         {!ro && node.kind === 'table' && (
           <>
             <CtxSeparator />
-            <CtxItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table: node.name })}>Edit structure…</CtxItem>
+            <CtxItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table: node.name, database })}>Edit structure…</CtxItem>
             <CtxItem icon={<Eraser />} danger onSelect={() => openDialog({ kind: 'empty-table', connId: conn.id, ref })}>Empty table…</CtxItem>
           </>
         )}
-        {!ro && <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: node.kind as 'table' | 'view', schema, table: node.name })}>Delete {node.kind}…</CtxItem>}
+        {!ro && <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: node.kind as 'table' | 'view', schema, table: node.name, database })}>Delete {node.kind}…</CtxItem>}
+      </>
+    )
+  }
+  if (isServerDatabase(conn, node)) {
+    // A whole database on a Postgres server (above its schemas).
+    const db = node.name
+    return (
+      <>
+        <CtxLabel>{db}</CtxLabel>
+        <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openDatabase(conn.id, undefined, db)}>Open database</CtxItem>
+        <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, '', undefined, db)}>New query here</CtxItem>
+        <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, node.path, true)}>Refresh</CtxItem>
+        <CtxItem icon={<Copy />} onSelect={() => copy(db)}>Copy name</CtxItem>
+        {!ro && (
+          <>
+            <CtxSeparator />
+            <CtxItem icon={<Plus />} onSelect={() => openDialog({ kind: 'create-database', connId: conn.id, database: db })}>New schema…</CtxItem>
+            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: 'database', schema: db })}>Delete database…</CtxItem>
+          </>
+        )}
       </>
     )
   }
   if (node.kind === 'schema' || node.kind === 'database') {
+    const { schema, database } = containerOf(node)
     return (
       <>
         <CtxLabel>{node.name}</CtxLabel>
-        <CtxItem icon={<LayoutGrid />} onSelect={() => ws.openDatabase(conn.id, node.name)}>Open {node.kind}</CtxItem>
-        <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, '', node.name)}>New query here</CtxItem>
+        <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openDatabase(conn.id, schema, database)}>Open {node.kind}</CtxItem>
+        <CtxItem icon={<FileCode2 />} onSelect={() => ws.openQuery(conn.id, '', schema, database)}>New query here</CtxItem>
         <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, node.path, true)}>Refresh</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
         {!ro && (
           <>
             <CtxSeparator />
-            <CtxItem icon={<Plus />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema: node.name })}>New table…</CtxItem>
-            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: 'database', schema: node.name })}>Delete {node.kind}…</CtxItem>
+            <CtxItem icon={<Plus />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, database })}>New table…</CtxItem>
+            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: node.kind as 'schema' | 'database', schema, database })}>Delete {node.kind}…</CtxItem>
           </>
         )}
       </>
@@ -150,7 +175,14 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
   const ws = useWorkspace()
   const Icon = nodeIcon(node)
   const isTable = node.kind === 'table' || node.kind === 'view'
+  const serverDb = isServerDatabase(conn, node)
   const isContainer = node.kind === 'schema' || node.kind === 'database'
+  // Opens the database view for this node (a tab, or the one already open).
+  const openView = () => {
+    if (serverDb) return ws.openDatabase(conn.id, undefined, node.name)
+    const { schema, database } = containerOf(node)
+    ws.openDatabase(conn.id, schema, database)
+  }
 
   const toggle = () => {
     if (!node.hasChildren) return
@@ -170,27 +202,27 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
             data-depth={depth}
             role="treeitem"
             aria-expanded={node.hasChildren ? open : undefined}
-            onClick={() => (isTable ? ws.openTable(conn.id, { schema: node.path[0], table: node.name }) : toggle())}
+            onClick={() => (isTable ? ws.openTable(conn.id, tableRefOf(node)) : toggle())}
             onDoubleClick={() => {
               if (!isContainer) return
               ws.toggle(key, true) // the two single clicks toggled it; keep it open
-              ws.openDatabase(conn.id, node.name) // opens a tab, or focuses the existing one
+              openView()
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && isContainer) (e.preventDefault(), ws.openDatabase(conn.id, node.name))
+              if (e.key === 'Enter' && isContainer) (e.preventDefault(), openView())
               // For tables, → expands columns instead of opening the table.
               if (isTable && e.key === 'ArrowRight' && !open) (e.preventDefault(), e.stopPropagation(), toggle())
               if (isTable && e.key === 'ArrowLeft' && open) (e.preventDefault(), e.stopPropagation(), toggle())
             }}
             className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded text-left text-[13px]"
           >
-            <Icon size={14} aria-hidden className={cn('shrink-0', node.primaryKey ? 'text-warning' : isTable ? 'text-primary' : 'text-muted-foreground')} />
+            <Icon size={14} aria-hidden className={cn('shrink-0', node.primaryKey ? 'text-warning' : isTable ? 'text-primary' : serverDb ? 'text-accent-foreground' : 'text-muted-foreground')} />
             <span className="truncate">{node.name}</span>
             {node.detail && <span className="ml-auto truncate pl-2 font-mono text-[11px] text-muted-foreground">{node.detail}</span>}
           </button>
           {isContainer && (
             <Tooltip content={`Open ${node.kind}`} side="right">
-              <button tabIndex={-1} onClick={() => ws.openDatabase(conn.id, node.name)} aria-label={`Open ${node.name}`}
+              <button tabIndex={-1} onClick={openView} aria-label={`Open ${node.name}`}
                 className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-background hover:text-foreground">
                 <LayoutGrid size={13} />
               </button>
@@ -221,7 +253,8 @@ function ConnectionActions({ conn, onEdit, onDelete, Item, Sep }: {
         <Item icon={<Plug />} onSelect={() => ws.openConnection(conn.id)}>Connect</Item>
       )}
       {conn.driver !== 'sqlite' && !conn.readOnly && (
-        <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'create-database', connId: conn.id })}>New {containerName(conn.driver)}…</Item>
+        // Postgres: a new database on the server; MySQL: a new database (schema).
+        <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'create-database', connId: conn.id, server: conn.driver === 'postgres' })}>New database…</Item>
       )}
       <Item icon={<Pencil />} onSelect={() => onEdit(conn)}>Edit connection…</Item>
       <Item icon={<Copy />} onSelect={() => copy(conn.driver === 'sqlite' ? conn.file ?? '' : `${conn.host}:${conn.port ?? ''}`)}>Copy address</Item>

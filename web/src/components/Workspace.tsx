@@ -15,9 +15,10 @@ import { Tooltip } from './ui/Tooltip'
 const tabIcon = { table: Table2, query: FileCode2, database: Database }
 
 function subtitle(t: Tab, connName?: string) {
-  if (t.kind === 'table') return t.table.schema === 'main' ? connName : t.table.schema
-  if (t.kind === 'query') return t.schema ?? connName
-  return t.title === connName ? 'Database' : connName
+  if (t.kind === 'table') return t.table.schema === 'main' ? connName : [t.table.database, t.table.schema].filter(Boolean).join('.')
+  if (t.kind === 'query') return [t.database, t.schema].filter(Boolean).join('.') || connName
+  if (t.title === connName) return 'Database'
+  return t.database && t.schema ? `${t.database} · ${connName}` : connName
 }
 
 function TabButton({ tab, index }: { tab: Tab; index: number }) {

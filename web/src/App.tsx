@@ -45,7 +45,7 @@ export function App() {
         applyTheme(st.settings.theme, st.settings.mode) // before first paint, avoids a color flash
         setState(st)
         const ws = useWorkspace.getState()
-        ws.init(st.tabs, st.activeTab)
+        ws.init(st.tabs, st.activeTab, st.expanded)
         ws.refresh().catch(() => {})
       }
       setSession(s)

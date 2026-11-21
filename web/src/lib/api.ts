@@ -58,7 +58,8 @@ export type Result = {
   primaryKey?: string[]
   error?: string
 }
-export type TableRef = { schema: string; table: string }
+/** `database` picks another database on the same server (Postgres); omitted = the connection's own. */
+export type TableRef = { database?: string; schema: string; table: string }
 export type TableInfo = { name: string; kind: 'table' | 'view'; rows?: number; bytes?: number }
 export type ColumnInfo = { name: string; type: string; nullable: boolean; default: string | null; primaryKey: boolean; autoIncrement: boolean; primaryKeyName?: string }
 export type FsEntry = { name: string; path: string; dir: boolean; size: number; modified: string }
@@ -72,6 +73,7 @@ export type AppState = {
   connections: Connection[]
   tabs: unknown[]
   activeTab?: string
+  expanded?: string[]
 }
 
 export class ApiError extends Error {
@@ -112,7 +114,7 @@ export const api = {
   removePassword: (current: string) => request<void>('DELETE', '/password', { current }),
   state: () => request<AppState>('GET', '/state'),
   saveSettings: (s: Partial<AppState['settings']>) => request<void>('PATCH', '/settings', s),
-  saveWorkspace: (tabs: unknown[], activeTab: string) => request<void>('PUT', '/workspace', { tabs, activeTab }),
+  saveWorkspace: (tabs: unknown[], activeTab: string, expanded: string[]) => request<void>('PUT', '/workspace', { tabs, activeTab, expanded }),
 
   connections: () => request<ConnView[]>('GET', '/connections'),
   saveConnection: (connection: Connection, secrets: SecretsInput) =>
@@ -123,14 +125,16 @@ export const api = {
   testConnection: (connection: Connection, secrets: SecretsInput) =>
     request<Info>('POST', '/connections/test', { connection, secrets }),
   connect: (id: string) => request<Info>('POST', `/connections/${id}/connect`),
-  disconnect: (id: string) => request<void>('POST', `/connections/${id}/disconnect`),
-  tree: (id: string, path: string[]) =>
-    request<TreeNode[]>('GET', `/connections/${id}/tree?${path.map((p) => `path=${enc(p)}`).join('&')}`),
-  query: (id: string, sql: string, queryId: string, confirmed = false, schema?: string) =>
-    request<Result[]>('POST', `/connections/${id}/query`, { sql, queryId, confirmed, schema, maxRows: 1000 }),
-  tables: (id: string, schema: string) => request<TableInfo[]>('GET', `/connections/${id}/tables?schema=${enc(schema)}`),
+  /** Without `db`, closes every session of the connection; with it, only that database's. */
+  disconnect: (id: string, db?: string) => request<void>('POST', `/connections/${id}/disconnect${db ? `?db=${enc(db)}` : ''}`),
+  tree: (id: string, path: string[], db?: string) =>
+    request<TreeNode[]>('GET', `/connections/${id}/tree?${[db ? `db=${enc(db)}` : '', ...path.map((p) => `path=${enc(p)}`)].filter(Boolean).join('&')}`),
+  query: (id: string, sql: string, queryId: string, confirmed = false, schema?: string, database?: string) =>
+    request<Result[]>('POST', `/connections/${id}/query`, { sql, queryId, confirmed, schema, database, maxRows: 1000 }),
+  tables: (id: string, schema: string, db?: string) =>
+    request<TableInfo[]>('GET', `/connections/${id}/tables?schema=${enc(schema)}${db ? `&db=${enc(db)}` : ''}`),
   columns: (id: string, ref: TableRef) =>
-    request<ColumnInfo[]>('GET', `/connections/${id}/columns?schema=${enc(ref.schema)}&table=${enc(ref.table)}`),
+    request<ColumnInfo[]>('GET', `/connections/${id}/columns?schema=${enc(ref.schema)}&table=${enc(ref.table)}${ref.database ? `&db=${enc(ref.database)}` : ''}`),
   fs: (path: string) => request<FsListing>('GET', `/fs?path=${enc(path)}`),
   createSqlite: (dir: string, name: string) => request<{ path: string }>('POST', '/fs/sqlite', { dir, name }),
   browse: (id: string, req: TableRef & { offset: number; limit: number; orderBy?: string; desc?: boolean; where?: string; queryId?: string }) =>

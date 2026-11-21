@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -244,29 +245,51 @@ func (m *Manager) Test(ctx context.Context, c model.Connection, in *SecretsInput
 	return s.conn.Info(), nil
 }
 
-// Session returns a live session, connecting on first use. Concurrent
-// callers share one connection attempt.
+// Session returns the connection's main session, connecting on first use.
 func (m *Manager) Session(ctx context.Context, id string) (driver.Conn, error) {
+	return m.SessionDB(ctx, id, "")
+}
+
+// sessionKey is the map key for a connection's session on a given database
+// ("" or the configured database = the main session).
+func sessionKey(id, db string) string {
+	if db == "" {
+		return id
+	}
+	return id + "\x00" + db
+}
+
+// SessionDB returns a live session on another database of the same server
+// (Postgres connections are bound to one database). Each database gets its
+// own independent session. Concurrent callers share one connection attempt.
+func (m *Manager) SessionDB(ctx context.Context, id, db string) (driver.Conn, error) {
 	m.mu.Lock()
-	s, ok := m.sessions[id]
+	c, err := m.find(id)
+	if err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	if db == c.Database {
+		db = ""
+	}
+	key := sessionKey(id, db)
+	s, ok := m.sessions[key]
 	if ok {
 		select {
 		case <-s.ready:
 			if s.err != nil { // retry after a failed attempt
-				delete(m.sessions, id)
+				delete(m.sessions, key)
 				ok = false
 			}
 		default:
 		}
 	}
 	if !ok {
-		c, err := m.find(id)
-		if err != nil {
-			m.mu.Unlock()
-			return nil, err
+		if db != "" {
+			c.Database = db
 		}
 		s = &session{ready: make(chan struct{})}
-		m.sessions[id] = s
+		m.sessions[key] = s
 		go func() {
 			opened, err := open(context.Background(), c, loadSecrets(id))
 			if err == nil {
@@ -289,13 +312,31 @@ func (m *Manager) Session(ctx context.Context, id string) (driver.Conn, error) {
 	}
 }
 
+// Disconnect closes every session of a connection (all databases).
 func (m *Manager) Disconnect(id string) {
 	m.mu.Lock()
-	s, ok := m.sessions[id]
-	delete(m.sessions, id)
+	var closing []*session
+	for k, s := range m.sessions {
+		if k == id || strings.HasPrefix(k, id+"\x00") {
+			closing = append(closing, s)
+			delete(m.sessions, k)
+		}
+	}
+	m.mu.Unlock()
+	for _, s := range closing {
+		go func() { <-s.ready; s.close() }()
+	}
+}
+
+// DisconnectDB closes only the session on one database (e.g. before dropping it).
+func (m *Manager) DisconnectDB(id, db string) {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionKey(id, db)]
+	delete(m.sessions, sessionKey(id, db))
 	m.mu.Unlock()
 	if ok {
-		go func() { <-s.ready; s.close() }()
+		<-s.ready
+		s.close()
 	}
 }
 

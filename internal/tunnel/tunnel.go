@@ -154,6 +154,10 @@ func authMethod(hop model.SSHHop, secret string) ([]ssh.AuthMethod, error) {
 	return nil, fmt.Errorf("unknown SSH auth method %q", hop.Auth)
 }
 
+// KnownHostsPath is the OpenSSH known_hosts file consulted for unpinned hosts
+// (a variable so tests can point it elsewhere).
+var KnownHostsPath = "~/.ssh/known_hosts"
+
 // hostKeyCallback trusts a pinned fingerprint, else ~/.ssh/known_hosts, else
 // reports UnknownHostError so the user can decide.
 func hostKeyCallback(i int, hop model.SSHHop) ssh.HostKeyCallback {
@@ -165,7 +169,7 @@ func hostKeyCallback(i int, hop model.SSHHop) ssh.HostKeyCallback {
 			}
 			return &UnknownHostError{Hop: i, Host: hop.Host, Fingerprint: fp, Changed: true}
 		}
-		if kh, err := knownhosts.New(expandHome("~/.ssh/known_hosts")); err == nil {
+		if kh, err := knownhosts.New(expandHome(KnownHostsPath)); err == nil {
 			err := kh(host, remote, key)
 			var ke *knownhosts.KeyError
 			if err == nil {

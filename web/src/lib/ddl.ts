@@ -193,10 +193,13 @@ export const emptyTable = (d: DriverName, schema: string, table: string) =>
   d === 'sqlite' ? `DELETE FROM ${qualify(d, schema, table)}` : `TRUNCATE TABLE ${qualify(d, schema, table)}`
 
 export const createDatabase = (d: DriverName, name: string) =>
-  d === 'mysql' ? `CREATE DATABASE ${q(d, name)} CHARACTER SET utf8mb4` : `CREATE SCHEMA ${q(d, name)}`
+  d === 'mysql' ? `CREATE DATABASE ${q(d, name)} CHARACTER SET utf8mb4` : `CREATE DATABASE ${q(d, name)}`
 
-export const dropDatabase = (d: DriverName, name: string) =>
-  d === 'mysql' ? `DROP DATABASE ${q(d, name)}` : `DROP SCHEMA ${q(d, name)} CASCADE`
+export const dropDatabase = (d: DriverName, name: string) => `DROP DATABASE ${q(d, name)}`
+
+/** Postgres schemas (MySQL calls its databases "schemas" too, so these are Postgres-only). */
+export const createSchema = (d: DriverName, name: string) => `CREATE SCHEMA ${q(d, name)}`
+export const dropSchema = (d: DriverName, name: string) => `DROP SCHEMA ${q(d, name)} CASCADE`
 
 /** What a "database" is called in the UI for each dialect. */
 export const containerName = (d: DriverName) => (d === 'postgres' ? 'schema' : 'database')

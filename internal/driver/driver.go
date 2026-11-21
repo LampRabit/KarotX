@@ -35,6 +35,9 @@ type Conn interface {
 	Tables(ctx context.Context, schema string) ([]TableInfo, error)
 	// Columns describes a table's columns (for the table designer).
 	Columns(ctx context.Context, t TableRef) ([]ColumnInfo, error)
+	// Databases lists other databases on the same server for drivers whose
+	// connection is bound to one database (Postgres); nil otherwise.
+	Databases(ctx context.Context) ([]string, error)
 	Browse(ctx context.Context, r BrowseRequest) (*Result, error)
 	// Apply runs grid edits in one transaction. With dryRun it only returns the SQL.
 	Apply(ctx context.Context, r ApplyRequest, dryRun bool) ([]string, error)
@@ -98,8 +101,10 @@ type Result struct {
 
 // TableRef identifies a table. Schema is empty for SQLite.
 type TableRef struct {
-	Schema string `json:"schema"`
-	Table  string `json:"table"`
+	// Database selects another database on the same server (Postgres); empty = the connection's own.
+	Database string `json:"database,omitempty"`
+	Schema   string `json:"schema"`
+	Table    string `json:"table"`
 }
 
 type BrowseRequest struct {

@@ -26,13 +26,24 @@ export const fmtRows = (n?: number) =>
 export const fmtBytes = (n?: number) =>
   n === undefined ? '' : n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`
 
-/** The databases (MySQL) or schemas (Postgres) of a connection. SQLite has just "main". */
-function useContainers(conn: ConnView) {
-  const entry = useWorkspace((s) => s.trees[treeKey(conn.id, [])])
+/** Postgres: the server's databases (top of the tree). Other drivers: none. */
+function useServerDatabases(conn: ConnView) {
+  const root = useWorkspace((s) => s.trees[treeKey(conn.id, [])])
   const loadTree = useWorkspace((s) => s.loadTree)
   useEffect(() => void loadTree(conn.id, []), [conn.id, loadTree])
+  const dbs = conn.driver === 'postgres' ? (root?.nodes ?? []).filter((n) => n.kind === 'database').map((n) => n.name) : []
+  return { dbs, loading: !root?.nodes }
+}
+
+/** Schema-level containers: Postgres schemas (of `database`), MySQL databases, SQLite "main". */
+function useContainers(conn: ConnView, database?: string) {
+  const path = database ? [database] : []
+  const entry = useWorkspace((s) => s.trees[treeKey(conn.id, path)])
+  const loadTree = useWorkspace((s) => s.loadTree)
+  useEffect(() => void (database && loadTree(conn.id, [database])), [conn.id, database, loadTree])
   if (conn.driver === 'sqlite') return { names: ['main'], loading: false }
-  return { names: (entry?.nodes ?? []).filter((n) => n.kind === 'schema' || n.kind === 'database').map((n) => n.name), loading: !entry?.nodes }
+  const nodes = (entry?.nodes ?? []).filter((n) => n.kind === 'schema' || (n.kind === 'database' && conn.driver !== 'postgres'))
+  return { names: nodes.map((n) => n.name), loading: !entry?.nodes }
 }
 
 function defaultSchema(conn: ConnView, names: string[]) {
@@ -42,18 +53,47 @@ function defaultSchema(conn: ConnView, names: string[]) {
   return names[0]
 }
 
+function Picker({ label, value, items, onPick, newLabel, onNew, placeholder }: {
+  label: string; value?: string; items: string[]; onPick: (v: string) => void; newLabel?: string; onNew?: () => void; placeholder: string
+}) {
+  return (
+    <Menu>
+      <MenuTrigger className="-ml-1 flex max-w-48 items-center gap-1 rounded-md px-1 font-semibold transition hover:bg-muted" aria-label={`Choose ${label}`}>
+        <span className="truncate">{value ?? placeholder}</span> <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+      </MenuTrigger>
+      <MenuContent>
+        <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground capitalize">{label}s</p>
+        <div className="max-h-72 overflow-y-auto">
+          {items.map((n) => (
+            <MenuItem key={n} icon={n === value ? <Check /> : <Database />} onSelect={() => onPick(n)}>{n}</MenuItem>
+          ))}
+        </div>
+        {onNew && (
+          <>
+            <MenuSeparator />
+            <MenuItem icon={<Plus />} onSelect={onNew}>{newLabel}</MenuItem>
+          </>
+        )}
+      </MenuContent>
+    </Menu>
+  )
+}
+
 export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
   const { updateTab, openTable, openQuery } = useWorkspace()
   const version = useWorkspace((s) => s.schemaVersion[conn.id] ?? 0)
-  const { names, loading: loadingNames } = useContainers(conn)
+  const { dbs } = useServerDatabases(conn)
+  // Postgres: which database on the server this tab looks at (default: the connection's own).
+  const database = dbs.length ? (tab.database ?? (conn.info?.database || conn.database || dbs[0])) : undefined
+  const { names, loading: loadingNames } = useContainers(conn, database)
   const schema = tab.schema ?? defaultSchema(conn, names)
   const [tables, setTables] = useState<TableInfo[]>()
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
   const [showResults, setShowResults] = useState(false)
-  const runner = useQueryRunner(conn, conn.driver === 'sqlite' ? undefined : schema)
+  const runner = useQueryRunner(conn, conn.driver === 'sqlite' ? undefined : schema, database)
   const elapsed = useElapsed(!!runner.running)
-  const completion = useSchema(conn.id, schema)
+  const completion = useSchema(conn.id, schema, database)
   const gridRef = useRef<HTMLUListElement>(null)
   const label = containerName(conn.driver)
 
@@ -61,11 +101,11 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
     if (!schema) return
     setError('')
     try {
-      setTables(await track(`Loading ${schema}`, api.tables(conn.id, schema)))
+      setTables(await track(`Loading ${schema}`, api.tables(conn.id, schema, database)))
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [conn.id, schema])
+  }, [conn.id, schema, database])
 
   useEffect(() => {
     setTables(undefined)
@@ -78,6 +118,15 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
     updateTab(tab.id, { schema: name, title: name })
     setShowResults(false)
   }
+
+  function pickDatabase(db: string) {
+    updateTab(tab.id, { database: db, schema: undefined, title: db })
+    setShowResults(false)
+  }
+
+  // "New schema" on Postgres, "New database" on MySQL; deleting follows the same naming.
+  const newContainer = () => openDialog({ kind: 'create-database', connId: conn.id, database })
+  const dropContainer = () => openDialog({ kind: 'drop', connId: conn.id, what: conn.driver === 'postgres' ? 'schema' : 'database', schema: schema!, database })
 
   function run(sql: string) {
     setShowResults(true)
@@ -97,7 +146,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
     }
   }
 
-  const ref = (t: TableInfo) => ({ schema, table: t.name })
+  const ref = (t: TableInfo) => ({ database, schema, table: t.name })
 
   return (
     <div className="flex h-full flex-col">
@@ -109,21 +158,17 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
           {conn.driver === 'sqlite' ? (
             <p className="font-semibold">main</p>
           ) : (
-            <Menu>
-              <MenuTrigger className="-ml-1 flex items-center gap-1 rounded-md px-1 font-semibold transition hover:bg-muted" aria-label={`Choose ${label}`}>
-                {schema ?? (loadingNames ? 'Loading…' : `No ${label}s`)} <ChevronDown size={14} className="text-muted-foreground" />
-              </MenuTrigger>
-              <MenuContent>
-                <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground capitalize">{label}s</p>
-                <div className="max-h-72 overflow-y-auto">
-                  {names.map((n) => (
-                    <MenuItem key={n} icon={n === schema ? <Check /> : <Database />} onSelect={() => pick(n)}>{n}</MenuItem>
-                  ))}
-                </div>
-                <MenuSeparator />
-                <MenuItem icon={<Plus />} onSelect={() => openDialog({ kind: 'create-database', connId: conn.id })}>New {label}…</MenuItem>
-              </MenuContent>
-            </Menu>
+            <div className="flex items-center gap-1">
+              {database && (
+                <>
+                  <Picker label="database" value={database} items={dbs} onPick={pickDatabase} placeholder="Database"
+                    newLabel="New database…" onNew={conn.readOnly ? undefined : () => openDialog({ kind: 'create-database', connId: conn.id, server: true })} />
+                  <span className="text-muted-foreground" aria-hidden>/</span>
+                </>
+              )}
+              <Picker label={label} value={schema} items={names} onPick={pick} placeholder={loadingNames ? 'Loading…' : `No ${label}s`}
+                newLabel={`New ${label}…`} onNew={conn.readOnly ? undefined : newContainer} />
+            </div>
           )}
         </div>
 
@@ -139,7 +184,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               onKeyDown={(e) => e.key === 'ArrowDown' && (e.preventDefault(), gridRef.current?.querySelector<HTMLButtonElement>('[data-card]')?.focus())}
-              placeholder={`Search ${tables?.length ?? ''} tables`}
+              placeholder={tables ? `Search ${tables.length} ${tables.length === 1 ? 'table' : 'tables'}` : 'Search tables'}
               className="h-8 w-full rounded-lg border bg-background pr-2 pl-8 text-[13px] outline-none transition focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
             />
           </label>
@@ -147,10 +192,10 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
 
         <div className="ml-auto flex items-center gap-1.5">
           {showResults && (
-            <Button size="sm" variant="ghost" onClick={() => openQuery(conn.id, '', schema)}><FileCode2 size={14} aria-hidden /> Open editor</Button>
+            <Button size="sm" variant="ghost" onClick={() => openQuery(conn.id, '', schema, database)}><FileCode2 size={14} aria-hidden /> Open editor</Button>
           )}
           {schema && !conn.readOnly && (
-            <Button size="sm" onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema })}>
+            <Button size="sm" onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, database })}>
               <Plus size={14} aria-hidden /> New table
             </Button>
           )}
@@ -159,13 +204,13 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
               <MoreHorizontal size={16} />
             </MenuTrigger>
             <MenuContent align="end">
-              <MenuItem icon={<RefreshCw />} onSelect={() => useWorkspace.getState().schemaChanged(conn.id, schema)}>Refresh</MenuItem>
-              <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, '', schema)}>Open in query editor</MenuItem>
+              <MenuItem icon={<RefreshCw />} onSelect={() => useWorkspace.getState().schemaChanged(conn.id, schema, database)}>Refresh</MenuItem>
+              <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, '', schema, database)}>Open in query editor</MenuItem>
               {conn.driver !== 'sqlite' && !conn.readOnly && (
                 <>
-                  <MenuItem icon={<Plus />} onSelect={() => openDialog({ kind: 'create-database', connId: conn.id })}>New {label}…</MenuItem>
+                  <MenuItem icon={<Plus />} onSelect={newContainer}>New {label}…</MenuItem>
                   <MenuSeparator />
-                  <MenuItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: 'database', schema })}>Delete {label}…</MenuItem>
+                  <MenuItem icon={<Trash2 />} danger onSelect={dropContainer}>Delete {label}…</MenuItem>
                 </>
               )}
             </MenuContent>
@@ -190,7 +235,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
               <p className="font-medium">No tables in {schema} yet</p>
               <p className="text-[13px] text-muted-foreground">Create one with the designer, or run CREATE TABLE below.</p>
             </div>
-            {!conn.readOnly && <Button onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema })}><Plus size={15} aria-hidden /> New table</Button>}
+            {!conn.readOnly && <Button onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, database })}><Plus size={15} aria-hidden /> New table</Button>}
           </div>
         ) : (
           <div className="h-full overflow-y-auto p-4">
@@ -204,17 +249,17 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                       <>
                         <CtxLabel>{t.name}</CtxLabel>
                         <CtxItem icon={<Table2 />} onSelect={() => openTable(conn.id, ref(t))} shortcut="Enter">Open data</CtxItem>
-                        <CtxItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, t.name), schema)}>Query in editor</CtxItem>
+                        <CtxItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, t.name), schema, database)}>Query in editor</CtxItem>
                         <CtxItem icon={<Copy />} onSelect={() => navigator.clipboard.writeText(t.name).then(() => toast.success('Copied name', { duration: 1200 }))}>Copy name</CtxItem>
                         {!conn.readOnly && t.kind === 'table' && (
                           <>
                             <CtxSeparator />
-                            <CtxItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table: t.name })}>Edit structure…</CtxItem>
+                            <CtxItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table: t.name, database })}>Edit structure…</CtxItem>
                             <CtxItem icon={<Eraser />} danger onSelect={() => openDialog({ kind: 'empty-table', connId: conn.id, ref: ref(t) })}>Empty table…</CtxItem>
                           </>
                         )}
                         {!conn.readOnly && (
-                          <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: t.kind, schema, table: t.name })}>Delete {t.kind}…</CtxItem>
+                          <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: t.kind, schema, table: t.name, database })}>Delete {t.kind}…</CtxItem>
                         )}
                       </>
                     }
@@ -251,7 +296,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
           running={!!runner.running}
           dialect={conn.driver}
           schema={completion}
-          scopeLabel={conn.driver === 'sqlite' ? conn.name : schema}
+          scopeLabel={conn.driver === 'sqlite' ? conn.name : database ? `${database}.${schema}` : schema}
           elapsed={elapsed}
         />
       )}

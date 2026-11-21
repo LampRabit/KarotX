@@ -93,3 +93,5 @@ func CreateSQLiteFile(path string) error {
 	_, err = db.Exec("PRAGMA user_version = 0; VACUUM")
 	return err
 }
+
+func (sqlite) databases(context.Context, *sql.DB) ([]string, error) { return nil, nil }

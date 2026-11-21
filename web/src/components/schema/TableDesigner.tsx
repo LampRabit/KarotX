@@ -30,7 +30,7 @@ function Toggle({ on, label, onClick, disabled, title, children }: { on: boolean
   )
 }
 
-export function TableDesigner({ conn, schema, table, onClose }: { conn: ConnView; schema: string; table?: string; onClose: () => void }) {
+export function TableDesigner({ conn, schema, table, database, onClose }: { conn: ConnView; schema: string; table?: string; database?: string; onClose: () => void }) {
   const d = conn.driver
   const [name, setName] = useState(table ?? '')
   const [before, setBefore] = useState<ColumnInfo[]>()
@@ -46,7 +46,7 @@ export function TableDesigner({ conn, schema, table, onClose }: { conn: ConnView
       setCols([{ key: newId(), name: 'id', type: d === 'sqlite' ? 'INTEGER' : 'bigint', nullable: false, default: '', primaryKey: true, autoIncrement: true }, blankColumn(d)])
       return
     }
-    api.columns(conn.id, { schema, table }).then((info) => (setBefore(info), setCols(info.map(fromInfo)))).catch((e) => setError(e.message))
+    api.columns(conn.id, { database, schema, table }).then((info) => (setBefore(info), setCols(info.map(fromInfo)))).catch((e) => setError(e.message))
     if (d === 'sqlite') {
       // Indexes and triggers must be recreated if the table is rebuilt.
       const lit = table.replace(/'/g, "''")
@@ -54,7 +54,7 @@ export function TableDesigner({ conn, schema, table, onClose }: { conn: ConnView
         .then((r) => setObjects((r[0]?.rows ?? []).map(([type, n, sql]) => ({ type: String(type), name: String(n), sql: String(sql) }))))
         .catch(() => {})
     }
-  }, [conn.id, schema, table, d])
+  }, [conn.id, schema, table, database, d])
 
   const named = cols.filter((c) => c.name.trim())
   const { stmts, warnings, notes } = useMemo(() => {
@@ -101,10 +101,10 @@ export function TableDesigner({ conn, schema, table, onClose }: { conn: ConnView
     setBusy(true)
     setError('')
     try {
-      await runDDL(conn, stmts, schema, table ? 'Altering table' : 'Creating table')
+      await runDDL(conn, stmts, schema, table ? 'Altering table' : 'Creating table', database)
       toast.success(table ? `Updated ${name}` : `Created ${name}`)
-      schemaChanged(conn.id, schema)
-      if (!table) useWorkspace.getState().openTable(conn.id, { schema: d === 'sqlite' ? 'main' : schema, table: name.trim() })
+      schemaChanged(conn.id, schema, database)
+      if (!table) useWorkspace.getState().openTable(conn.id, { database, schema: d === 'sqlite' ? 'main' : schema, table: name.trim() })
       onClose()
     } catch (e) {
       setError((e as Error).message)
@@ -118,7 +118,7 @@ export function TableDesigner({ conn, schema, table, onClose }: { conn: ConnView
     <div className="flex max-h-[min(820px,92vh)] flex-col">
       <header className="border-b px-6 py-4 pr-14">
         <h2 className="text-[15px] font-semibold">{table ? `Edit table ${table}` : 'New table'}</h2>
-        <p className="text-[13px] text-muted-foreground">{d === 'sqlite' ? conn.name : `In ${containerName(d)} ${schema}`} · changes are previewed as SQL before they run</p>
+        <p className="text-[13px] text-muted-foreground">{d === 'sqlite' ? conn.name : `In ${containerName(d)} ${database ? `${database}.` : ''}${schema}`} · changes are previewed as SQL before they run</p>
       </header>
       <div className="flex-1 space-y-5 overflow-x-hidden overflow-y-auto px-6 py-5">
         <Input label="Table name" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!table} placeholder="e.g. customers" className="max-w-sm" />

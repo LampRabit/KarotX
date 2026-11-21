@@ -37,6 +37,18 @@ go run ./cmd/karotx --no-open
 pnpm -C web dev                                        # http://localhost:5173, proxies /api
 ```
 
+### Live tests
+
+Unit tests run everywhere. Live tests against real servers are opt-in:
+
+```sh
+KAROTX_IT_PG=127.0.0.1:5432:postgres:postgres \
+KAROTX_IT_MYSQL=127.0.0.1:3306:root,127.0.0.1:3307:root \
+go test ./internal/driver/sqldb -run TestLive -v
+```
+
+These connect through a real two-hop SSH tunnel (in-process SSH servers) and check TLS where the server offers it. Passwords, if needed, go in `KAROTX_IT_PG_PASSWORD` and `KAROTX_IT_MYSQL_PASSWORD`.
+
 ## Release
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request:

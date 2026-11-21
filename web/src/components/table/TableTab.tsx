@@ -45,13 +45,14 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
   const [review, setReview] = useState<string[]>()
   const filterRef = useRef<HTMLInputElement>(null)
   const showSpinner = useDelayed(!!loading, 150)
-  const { schema, table } = tab.table
+  const { schema, table, database } = tab.table
   const updateTab = useWorkspace((s) => s.updateTab)
   const [showResults, setShowResults] = useState(false)
-  const runner = useQueryRunner(conn, conn.driver === 'sqlite' ? undefined : schema)
+  const runner = useQueryRunner(conn, conn.driver === 'sqlite' ? undefined : schema, database)
   const elapsed = useElapsed(!!runner.running)
-  const completion = useSchema(conn.id, schema)
+  const completion = useSchema(conn.id, schema, database)
 
+  const subtitle = conn.driver === 'sqlite' ? conn.name : [database, schema, conn.name].filter(Boolean).join(' · ')
   const pending = edits.size + deleted.size + inserts.length
   const columns = data?.columns ?? []
   const base = data?.rows ?? []
@@ -171,8 +172,8 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Table2 size={16} aria-hidden /></span>
         <div className="max-w-44 min-w-0 shrink-0 leading-tight">
           <h2 className="truncate font-semibold" title={table}>{table}</h2>
-          <p className="truncate text-xs text-muted-foreground" title={conn.driver === 'sqlite' ? conn.name : `${schema} · ${conn.name}`}>
-            {conn.driver === 'sqlite' ? conn.name : `${schema} · ${conn.name}`}
+          <p className="truncate text-xs text-muted-foreground" title={subtitle}>
+            {subtitle}
           </p>
         </div>
         {showResults ? (
@@ -244,14 +245,14 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
               <MoreHorizontal size={16} />
             </MenuTrigger>
             <MenuContent align="end">
-              <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, table), schema)}>Query in editor</MenuItem>
+              <MenuItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, table), schema, database)}>Query in editor</MenuItem>
               <MenuItem icon={<RefreshCw />} onSelect={load}>Reload <Kbd className="ml-auto">Alt R</Kbd></MenuItem>
               {!conn.readOnly && (
                 <>
-                  <MenuItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table })}>Edit structure…</MenuItem>
+                  <MenuItem icon={<Pencil />} onSelect={() => openDialog({ kind: 'table-designer', connId: conn.id, schema, table, database })}>Edit structure…</MenuItem>
                   <MenuSeparator />
                   <MenuItem icon={<Eraser />} danger onSelect={() => openDialog({ kind: 'empty-table', connId: conn.id, ref: tab.table })}>Empty table…</MenuItem>
-                  <MenuItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: 'table', schema, table })}>Delete table…</MenuItem>
+                  <MenuItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'drop', connId: conn.id, what: 'table', schema, table, database })}>Delete table…</MenuItem>
                 </>
               )}
             </MenuContent>
@@ -335,7 +336,7 @@ export function TableTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
         running={!!runner.running}
         dialect={conn.driver}
         schema={completion}
-        scopeLabel={conn.driver === 'sqlite' ? conn.name : schema}
+        scopeLabel={conn.driver === 'sqlite' ? conn.name : database ? `${database}.${schema}` : schema}
         elapsed={elapsed}
         placeholder={`Query ${table}… e.g. SELECT * FROM ${table} WHERE …`}
       />
@@ -360,7 +361,7 @@ function Structure({ conn, tab, version }: { conn: ConnView; tab: TTab; version:
         <div className="flex items-center justify-between border-b px-4 py-3">
           <p className="font-medium">{cols ? `${cols.length} columns` : 'Columns'}</p>
           {!conn.readOnly && (
-            <Button size="sm" variant="secondary" onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema: tab.table.schema, table: tab.table.table })}>
+            <Button size="sm" variant="secondary" onClick={() => openDialog({ kind: 'table-designer', connId: conn.id, schema: tab.table.schema, table: tab.table.table, database: tab.table.database })}>
               <Pencil size={13} aria-hidden /> Edit structure
             </Button>
           )}

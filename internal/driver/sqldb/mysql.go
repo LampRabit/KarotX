@@ -161,3 +161,5 @@ func (mysqlDialect) columns(ctx context.Context, db *sql.DB, t driver.TableRef) 
 		FROM information_schema.columns WHERE table_schema = ? AND table_name = ?
 		ORDER BY ordinal_position`, t.Schema, t.Table)
 }
+
+func (mysqlDialect) databases(context.Context, *sql.DB) ([]string, error) { return nil, nil }

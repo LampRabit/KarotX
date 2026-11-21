@@ -15,11 +15,13 @@ Phases 0–4 make up the MVP.
 - Per-connection **production** flag: read-only by default, confirmation before destructive statements.
 - Schema tree (lazy), table data grid (paged, virtualized), SQL editor with autocomplete, result grid, Stop button.
 - Inline grid editing → staged changes → SQL preview → apply.
-- Restore connections and tabs from the state file.
+- Restore connections, tabs and expanded tree folders from the state file.
+- Postgres: switch between databases on the same server.
 
-### Phase 2 — Query Commander
-- Visual builder: tables, columns, FK-aware joins, filters, group/aggregate, sort, limit.
-- Live, editable SQL output for each dialect.
+### Phase 2 — Query Commander (UI first)
+- Visual builder: tables, columns, FK-aware joins, filters, group/aggregate, sort, limit. No typing needed.
+- Live, editable SQL output for each dialect, as the second view.
+- The same visual filter builder becomes the table filter's main mode (raw WHERE stays available).
 
 ### Phase 3 — Redis
 - Key browser (pattern scan, type-aware views for string/hash/list/set/zset/stream), TTL, command console.

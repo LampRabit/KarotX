@@ -5,8 +5,8 @@ import { track } from './activity'
 
 export type Tab =
   | { id: string; kind: 'table'; connId: string; title: string; table: TableRef; sql?: string }
-  | { id: string; kind: 'query'; connId: string; title: string; sql: string; schema?: string }
-  | { id: string; kind: 'database'; connId: string; title: string; schema?: string; sql?: string }
+  | { id: string; kind: 'query'; connId: string; title: string; sql: string; schema?: string; database?: string }
+  | { id: string; kind: 'database'; connId: string; title: string; schema?: string; database?: string; sql?: string }
 
 type TreeEntry = { nodes?: TreeNode[]; loading: boolean; error?: string }
 
@@ -20,7 +20,7 @@ type Workspace = {
   /** Bumped after DDL so open views reload their schema. */
   schemaVersion: Record<string, number>
 
-  init: (tabs: unknown[], activeTab?: string) => void
+  init: (tabs: unknown[], activeTab?: string, expanded?: string[]) => void
   refresh: () => Promise<void>
   connect: (id: string) => Promise<boolean>
   /** Connect if needed and expand the connection's schema in the sidebar. */
@@ -31,17 +31,38 @@ type Workspace = {
   toggle: (key: string, open?: boolean) => void
 
   openTable: (connId: string, ref: TableRef) => void
-  openQuery: (connId: string, sql?: string, schema?: string) => void
-  openDatabase: (connId: string, schema?: string) => void
+  openQuery: (connId: string, sql?: string, schema?: string, database?: string) => void
+  openDatabase: (connId: string, schema?: string, database?: string) => void
   closeTab: (id: string) => void
   closeTabs: (ids: string[]) => void
-  schemaChanged: (connId: string, schema?: string) => void
+  schemaChanged: (connId: string, schema?: string, database?: string) => void
   closeConnectionTabs: (connId: string) => void
   setActive: (id: string) => void
   updateTab: (id: string, patch: Partial<Tab>) => void
 }
 
 export const treeKey = (connId: string, path: string[]) => [connId, ...path].join('\u0000')
+
+/**
+ * Postgres connections list the server's databases at the top of the tree,
+ * so their node paths start with the database: [db, schema, table, column].
+ * Other drivers use [schema, table, column] (SQLite: ["main", table, column]).
+ */
+export function hasDbLevel(connId: string) {
+  const s = useWorkspace.getState()
+  const conn = s.connections.find((c) => c.id === connId)
+  return conn?.driver === 'postgres' && !!s.trees[treeKey(connId, [])]?.nodes?.some((n) => n.kind === 'database')
+}
+
+/** Table reference for a table/view node. */
+export const tableRefOf = (n: TreeNode): TableRef =>
+  n.path.length === 3 ? { database: n.path[0], schema: n.path[1], table: n.name } : { schema: n.path[0], table: n.name }
+
+/** Is this node a whole database on a Postgres server (above schemas)? */
+export const isServerDatabase = (conn: Pick<ConnView, 'driver'>, n: TreeNode) => conn.driver === 'postgres' && n.kind === 'database'
+
+/** Schema-level container (a Postgres schema, or a MySQL database): its schema and database. */
+export const containerOf = (n: TreeNode) => ({ schema: n.name, database: n.path.length === 2 ? n.path[0] : undefined })
 
 export const useWorkspace = create<Workspace>((set, get) => ({
   connections: [],
@@ -52,9 +73,13 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   activeTab: '',
   schemaVersion: {},
 
-  init: (tabs, activeTab) => {
+  init: (tabs, activeTab, expanded) => {
     const valid = (tabs as Tab[]).filter((t) => t && t.id && t.connId && ['table', 'query', 'database'].includes(t.kind))
-    set({ tabs: valid, activeTab: valid.some((t) => t.id === activeTab) ? activeTab! : '' })
+    set({
+      tabs: valid,
+      activeTab: valid.some((t) => t.id === activeTab) ? activeTab! : '',
+      expanded: Object.fromEntries((expanded ?? []).map((k) => [k, true])),
+    })
   },
 
   refresh: async () => {
@@ -104,7 +129,9 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     if (cur && (cur.loading || (cur.nodes && !force))) return
     set((s) => ({ trees: { ...s.trees, [key]: { ...cur, loading: true, error: undefined } } }))
     try {
-      const nodes = await track('Loading schema', api.tree(connId, path))
+      // Under a Postgres database node, ask that database's session for the rest of the path.
+      const db = path.length > 0 && hasDbLevel(connId) ? path[0] : undefined
+      const nodes = await track('Loading schema', api.tree(connId, db ? path.slice(1) : path, db))
       set((s) => ({ trees: { ...s.trees, [key]: { nodes, loading: false } } }))
     } catch (e) {
       set((s) => ({ trees: { ...s.trees, [key]: { loading: false, error: (e as Error).message } } }))
@@ -115,23 +142,24 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   toggle: (key, open) => set((s) => ({ expanded: { ...s.expanded, [key]: open ?? !s.expanded[key] } })),
 
   openTable: (connId, table) => {
-    const existing = get().tabs.find((t) => t.kind === 'table' && t.connId === connId && t.table.schema === table.schema && t.table.table === table.table)
+    const same = (t: Tab) => t.kind === 'table' && t.connId === connId && t.table.schema === table.schema && t.table.table === table.table && (t.table.database ?? '') === (table.database ?? '')
+    const existing = get().tabs.find(same)
     if (existing) return set({ activeTab: existing.id })
     const tab: Tab = { id: newId(), kind: 'table', connId, title: table.table, table }
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
   },
 
-  openQuery: (connId, sql = '', schema) => {
+  openQuery: (connId, sql = '', schema, database) => {
     const n = get().tabs.filter((t) => t.kind === 'query').length + 1
-    const tab: Tab = { id: newId(), kind: 'query', connId, title: `Query ${n}`, sql, schema }
+    const tab: Tab = { id: newId(), kind: 'query', connId, title: `Query ${n}`, sql, schema, database }
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
   },
 
-  openDatabase: (connId, schema) => {
-    const existing = get().tabs.find((t) => t.kind === 'database' && t.connId === connId && (!schema || t.schema === schema))
+  openDatabase: (connId, schema, database) => {
+    const existing = get().tabs.find((t) => t.kind === 'database' && t.connId === connId && (!schema || t.schema === schema) && (!database || t.database === database))
     if (existing) return set({ activeTab: existing.id })
     const name = get().connections.find((c) => c.id === connId)?.name ?? 'Database'
-    const tab: Tab = { id: newId(), kind: 'database', connId, title: schema ?? name, schema }
+    const tab: Tab = { id: newId(), kind: 'database', connId, title: schema ?? database ?? name, schema, database }
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
   },
 
@@ -141,10 +169,12 @@ export const useWorkspace = create<Workspace>((set, get) => ({
       return { tabs, activeTab: tabs.some((t) => t.id === s.activeTab) ? s.activeTab : (tabs[tabs.length - 1]?.id ?? '') }
     }),
 
-  schemaChanged: (connId, schema) => {
+  schemaChanged: (connId, schema, database) => {
     set((s) => ({ schemaVersion: { ...s.schemaVersion, [connId]: (s.schemaVersion[connId] ?? 0) + 1 } }))
-    get().loadTree(connId, [], true)
-    if (schema) get().loadTree(connId, [schema], true)
+    const { loadTree } = get()
+    loadTree(connId, [], true)
+    if (database) loadTree(connId, [database], true)
+    if (schema) loadTree(connId, database ? [database, schema] : [schema], true)
   },
 
   closeTab: (id) =>
@@ -165,10 +195,13 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   updateTab: (id, patch) => set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? ({ ...t, ...patch } as Tab) : t)) })),
 }))
 
-// Persist open tabs (debounced) so reopening KarotX restores them.
+// Persist open tabs and expanded tree nodes (debounced) so reopening KarotX restores them.
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 useWorkspace.subscribe((s, prev) => {
-  if (s.tabs === prev.tabs && s.activeTab === prev.activeTab) return
+  if (s.tabs === prev.tabs && s.activeTab === prev.activeTab && s.expanded === prev.expanded) return
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => api.saveWorkspace(s.tabs, s.activeTab).catch(() => {}), 600)
+  saveTimer = setTimeout(() => {
+    const expanded = Object.keys(s.expanded).filter((k) => s.expanded[k])
+    api.saveWorkspace(s.tabs, s.activeTab, expanded).catch(() => {})
+  }, 600)
 })

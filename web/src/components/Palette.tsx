@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
 import { useDialogs } from '@/lib/dialogs'
 import { modKey } from '@/lib/hooks'
-import { useWorkspace } from '@/lib/workspace'
+import { tableRefOf, useWorkspace } from '@/lib/workspace'
 import { BrandIcon } from './BrandIcon'
 import { Dialog } from './ui/Dialog'
 import { Kbd } from './ui/Kbd'
@@ -68,7 +68,9 @@ export function CommandPalette({ actions }: { actions: Actions }) {
         const id = `t-${connId}-${n.path.join('.')}`
         if (seen.has(id)) continue
         seen.add(id)
-        list.push({ id, group: 'Tables', label: n.name, hint: `${n.path[0] === 'main' ? '' : n.path[0] + ' · '}${conn.name}`, icon: <Table2 />, run: () => openTable(connId, { schema: n.path[0], table: n.name }) })
+        const ref = tableRefOf(n)
+        const where = [ref.database, ref.schema === 'main' ? '' : ref.schema].filter(Boolean).join('.')
+        list.push({ id, group: 'Tables', label: n.name, hint: `${where ? where + ' · ' : ''}${conn.name}`, icon: <Table2 />, run: () => openTable(connId, ref) })
       }
     }
     return list

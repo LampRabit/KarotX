@@ -8,7 +8,7 @@ import { Confirm } from '../ui/Confirm'
  * Runs SQL against a connection: tracks progress, supports Stop, and asks
  * for confirmation on production connections. Render `confirmDialog`.
  */
-export function useQueryRunner(conn: ConnView, schema?: string) {
+export function useQueryRunner(conn: ConnView, schema?: string, database?: string) {
   const refresh = useWorkspace((s) => s.refresh)
   const schemaChanged = useWorkspace((s) => s.schemaChanged)
   const [results, setResults] = useState<Result[]>()
@@ -23,12 +23,12 @@ export function useQueryRunner(conn: ConnView, schema?: string) {
     setRunning(qid)
     setError('')
     try {
-      const res = await track('Running query', api.query(conn.id, sql, qid, confirmed, schema))
+      const res = await track('Running query', api.query(conn.id, sql, qid, confirmed, schema, database))
       setResults(res)
       const firstErr = res.findIndex((r) => r.error)
       setActive(firstErr >= 0 ? firstErr : Math.max(0, res.findLastIndex((r) => r.columns)))
       // DDL changes the schema: refresh the sidebar and open views.
-      if (/\b(create|alter|drop|rename|truncate)\b/i.test(sql)) schemaChanged(conn.id, schema)
+      if (/\b(create|alter|drop|rename|truncate)\b/i.test(sql)) schemaChanged(conn.id, schema, database)
     } catch (e) {
       const err = e as ApiError
       if (err.data?.needsConfirmation) setConfirm({ sql, statements: err.data.statements ?? [] })
@@ -37,7 +37,7 @@ export function useQueryRunner(conn: ConnView, schema?: string) {
       setRunning(undefined)
       refresh()
     }
-  }, [conn.id, schema, running, refresh, schemaChanged])
+  }, [conn.id, schema, database, running, refresh, schemaChanged])
 
   const stop = useCallback(() => running && api.cancel(running), [running])
   const clear = useCallback(() => (setResults(undefined), setError('')), [])

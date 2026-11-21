@@ -12,6 +12,7 @@ Read these before changing anything. Keep them current when you change direction
 
 ## Working rules
 
+0. **UI first, query second.** Every feature must work through the UI. SQL or command input is the fallback for power users, never the primary path. See context.md.
 1. **Ask when unsure.** Don't guess on product decisions.
 2. **Minimal, effective code.** Only write what's needed now. Before a large change, check that it is actually worth it.
 3. **Design for humans.** Every UI change must be clear, accessible (WCAG AA contrast, keyboard navigable, visible focus) and easy for a beginner.
