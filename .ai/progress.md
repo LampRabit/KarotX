@@ -42,7 +42,8 @@
     - Playwright at 1065×648 (no horizontal scroll; rebuild kept rows; NULL filled with default).
     - Primary-key moves on Postgres 18 and MariaDB 12 using the real ddl.ts.
 
-- Release pipeline: CI (UI build, gofmt, vet, race tests, cross-platform GoReleaser dry run) is green on GitHub. Pushing a `v*` tag publishes a release. No release has been tagged yet.
+- Release pipeline: CI (UI build, gofmt, vet, race tests, cross-platform GoReleaser dry run) is green on GitHub. A `v*` tag runs tests and builds Windows, macOS and Linux archives for amd64 and arm64 into a draft GitHub Release for manual publication.
+- 2026-11-21: Tagged the feature-complete Phase 0–4 MVP as `v0.1.0`. The tag and release notes were pushed; GitHub Actions was triggered to build the six platform archives and checksums. The release remains a draft for the owner to review and publish.
 
 - 2026-11-21 Phase 1 completion:
   - Guiding principle recorded: **UI first, query second** (context.md, README rule 0).
