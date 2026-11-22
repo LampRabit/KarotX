@@ -348,7 +348,7 @@ function ConnectionItem({ conn, onEdit }: { conn: ConnView; onEdit: (c: ConnView
     conn.unavailable ? toast.info(conn.name, { description: conn.unavailable }) : open ? toggle(conn.id, false) : openConnection(conn.id)
 
   return (
-    // LampRabit databases fade in when the services file adds them.
+    // Managed databases fade in when the services file adds them.
     <motion.li role="none" initial={conn.managed ? { opacity: 0, y: -4 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
       <ContextMenu content={<ConnectionActions conn={conn} onEdit={onEdit} onDelete={() => setConfirmDelete(true)} Item={CtxItem} Sep={CtxSeparator} />}>
         <div className={cn('group relative flex h-9 items-center gap-1 rounded-lg pr-1 hover:bg-muted', conn.unavailable && 'text-muted-foreground')}>
@@ -410,20 +410,21 @@ export function ConnectionList({ filter, onEdit }: { filter: string; onEdit: (c:
   const q = filter.trim().toLowerCase()
   const shown = q ? connections.filter((c) => c.name.toLowerCase().includes(q) || (c.host ?? '').toLowerCase().includes(q)) : connections
   if (q && shown.length === 0) return <p className="px-2 py-3 text-[13px] text-muted-foreground">No connections match “{filter}”.</p>
-  const lamprabit = shown.filter((c) => c.managed)
+  const managed = shown.filter((c) => c.managed)
+  const source = managed[0]?.source ?? 'Services'
   return (
     <ul id="kx-tree" role="tree" aria-label="Connections" className="space-y-0.5" onKeyDown={onTreeKey}>
       {shown.filter((c) => !c.managed).map((c) => <ConnectionItem key={c.id} conn={c} onEdit={onEdit} />)}
-      {lamprabit.length > 0 && (
+      {managed.length > 0 && (
         <li role="none" className="pt-2">
-          <Tooltip content="Added automatically from LampRabit. Manage them in LampRabit." side="right">
-            <div id="kx-lamprabit" className="flex items-center gap-1.5 px-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-              LampRabit
-              <span className="rounded bg-muted px-1 font-mono text-[10px] font-normal normal-case">{lamprabit.length}</span>
+          <Tooltip content={`Added automatically by ${source}. Manage them in ${source}.`} side="right">
+            <div id="kx-managed" className="flex items-center gap-1.5 px-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+              <span className="truncate">{source}</span>
+              <span className="rounded bg-muted px-1 font-mono text-[10px] font-normal normal-case">{managed.length}</span>
             </div>
           </Tooltip>
-          <ul role="group" aria-labelledby="kx-lamprabit" className="space-y-0.5">
-            {lamprabit.map((c) => <ConnectionItem key={c.id} conn={c} onEdit={onEdit} />)}
+          <ul role="group" aria-labelledby="kx-managed" className="space-y-0.5">
+            {managed.map((c) => <ConnectionItem key={c.id} conn={c} onEdit={onEdit} />)}
           </ul>
         </li>
       )}

@@ -49,7 +49,7 @@ func (s *Server) listConnections(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.opt.Conns.List())
 }
 
-// connectionEvents streams a message whenever the LampRabit services file
+// connectionEvents streams a message whenever the services file
 // changes, so the UI reloads its connection list (server-sent events).
 func (s *Server) connectionEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)

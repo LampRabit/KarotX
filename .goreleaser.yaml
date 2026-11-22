@@ -50,7 +50,7 @@ release:
   header: |
     # KarotX {{ .Version }}
 
-    KarotX is a browser-based database client distributed as a single Go binary. This is the first LampRabit release: the complete MVP for relational databases, Redis and MongoDB, plus import/export and live LampRabit integration.
+    KarotX is a browser-based database client distributed as a single Go binary. This is the first LampRabit release: the complete MVP for relational databases, Redis and MongoDB, plus import/export and live services-file integration.
 
     ## Features
 
@@ -61,7 +61,7 @@ release:
     - Save connections and tabs in an encrypted workspace; keep credentials in the OS keychain.
     - Protect the browser UI with an optional password and use read-only and production safeguards.
     - Import and export tables, databases, Redis keys and MongoDB collections (CSV, JSON, SQL) from the UI, with progress and Stop.
-    - Run with `--lamprabit <file>` to show every LampRabit database automatically; the list updates live as LampRabit adds, removes, starts or stops services.
+    - Run with `--services <file>` to show databases managed by another tool, such as LampRabit, automatically; the list updates live as databases are added, removed, started or stopped. `--lamprabit` is an alias.
 
     ## Downloads
 

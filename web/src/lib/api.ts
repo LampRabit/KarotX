@@ -41,8 +41,10 @@ export type Info = { dialect: DriverName; serverVersion: string; database: strin
 export type ConnStatus = 'idle' | 'connecting' | 'connected' | 'error'
 export type ConnView = Connection & {
   status: ConnStatus; error?: string; info?: Info; hasPassword: boolean
-  /** From the LampRabit services file: can't be edited or deleted here. */
+  /** From the services file (--services): can't be edited or deleted here. */
   managed?: boolean
+  /** Tool that manages it (the file's `source`, e.g. LampRabit). */
+  source?: string
   /** Why it can't be opened (stopped, or type not supported yet). */
   unavailable?: string
 }

@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseServices(t *testing.T) {
-	list, err := parseServices([]byte(`{"version":1,"databases":[
+	list, err := parseServices([]byte(`{"version":1,"source":"LampRabit","databases":[
 		{"id":"pg","name":"Postgres","type":"postgres","host":"127.0.0.1","port":5432,"password":"pw","status":"running"},
 		{"id":"maria","type":"mariadb","host":"127.0.0.1","status":"running"},
 		{"id":"cache","type":"redis","host":"127.0.0.1","status":"stopped"},
@@ -24,7 +24,7 @@ func TestParseServices(t *testing.T) {
 		t.Fatalf("want 4 entries (bad id and duplicate skipped), got %d", len(list))
 	}
 	pg, maria, cache, ch := list[0], list[1], list[2], list[3]
-	if pg.conn.ID != "lr-pg" || pg.conn.Driver != "postgres" || pg.password != "pw" || pg.unavailable != "" {
+	if pg.conn.ID != "lr-pg" || pg.conn.Driver != "postgres" || pg.password != "pw" || pg.unavailable != "" || pg.source != "LampRabit" {
 		t.Errorf("postgres: %+v", pg)
 	}
 	if maria.conn.Driver != "mysql" || maria.conn.Preset != "mariadb" || maria.conn.Name != "maria" {
@@ -35,6 +35,9 @@ func TestParseServices(t *testing.T) {
 	}
 	if ch.unavailable != "ClickHouse support is coming soon" {
 		t.Errorf("clickhouse: %+v", ch)
+	}
+	if l, _ := parseServices([]byte(`{"version":1,"databases":[{"id":"x","type":"redis","host":"h","status":"stopped"}]}`)); l[0].source != "Services" || l[0].unavailable != "Stopped in Services" {
+		t.Errorf("default source: %+v", l[0])
 	}
 	if _, err := parseServices([]byte(`{"version":2}`)); err == nil {
 		t.Error("version 2 should be rejected")

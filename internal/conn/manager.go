@@ -42,8 +42,9 @@ type View struct {
 	Error       string       `json:"error,omitempty"`
 	Info        *driver.Info `json:"info,omitempty"`
 	HasPassword bool         `json:"hasPassword"`
-	// Managed connections come from the LampRabit services file.
+	// Managed connections come from the services file (--services).
 	Managed     bool   `json:"managed,omitempty"`
+	Source      string `json:"source,omitempty"`      // tool that manages it, e.g. LampRabit
 	Unavailable string `json:"unavailable,omitempty"` // why it can't be opened
 }
 
@@ -69,7 +70,7 @@ type Manager struct {
 	sessions map[string]*session
 	queries  map[string]context.CancelFunc
 
-	lr          sync.RWMutex // guards the LampRabit fields below
+	lr          sync.RWMutex // guards the services-file fields below
 	managed     []managed
 	servicesErr string
 	changed     chan struct{}
@@ -80,7 +81,7 @@ func NewManager(store *state.Store) *Manager {
 }
 
 // secretsFor returns a connection's secrets: from the services file for
-// LampRabit connections, from the keychain otherwise.
+// managed connections, from the keychain otherwise.
 func (m *Manager) secretsFor(id string) model.Secrets {
 	if x, ok := m.findManaged(id); ok {
 		return model.Secrets{Password: x.password}
@@ -165,7 +166,7 @@ func (m *Manager) List() []View {
 	m.lr.RLock()
 	defer m.lr.RUnlock()
 	for _, x := range m.managed {
-		v := View{Connection: x.conn, Status: "idle", HasPassword: x.password != "", Managed: true, Unavailable: x.unavailable}
+		v := View{Connection: x.conn, Status: "idle", HasPassword: x.password != "", Managed: true, Source: x.source, Unavailable: x.unavailable}
 		if s, ok := m.sessions[x.conn.ID]; ok && x.unavailable == "" {
 			select {
 			case <-s.ready:
@@ -190,7 +191,7 @@ func (m *Manager) Save(c model.Connection, in *SecretsInput) (model.Connection, 
 		return c, err
 	}
 	if strings.HasPrefix(c.ID, managedPrefix) {
-		return c, errManaged
+		return c, m.errManaged(c.ID)
 	}
 	isNew := c.ID == ""
 	if isNew {
@@ -228,7 +229,7 @@ func (m *Manager) Save(c model.Connection, in *SecretsInput) (model.Connection, 
 
 func (m *Manager) Delete(id string) error {
 	if strings.HasPrefix(id, managedPrefix) {
-		return errManaged
+		return m.errManaged(id)
 	}
 	m.Disconnect(id)
 	if err := m.store.Update(func(st *state.State) {

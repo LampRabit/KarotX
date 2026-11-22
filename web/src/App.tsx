@@ -57,8 +57,8 @@ export function App() {
 
   useEffect(() => void load(), [load])
 
-  // LampRabit adds, removes, starts or stops databases by editing its services
-  // file; the server pushes an event each time so the list updates live.
+  // A tool such as LampRabit adds, removes, starts or stops databases by editing
+  // the services file; the server pushes an event each time so the list updates live.
   const live = !!session?.authenticated && !!state
   useEffect(() => {
     if (!live) return
@@ -70,8 +70,8 @@ export function App() {
       const now = new Set(useWorkspace.getState().connections.map((c) => c.id))
       before.filter((id) => !now.has(id)).forEach((id) => ws.closeConnectionTabs(id))
       const { error } = JSON.parse(e.data) as { error?: string }
-      if (error) toast.warning('LampRabit databases may be out of date', { id: 'lamprabit', description: error })
-      else toast.dismiss('lamprabit')
+      if (error) toast.warning('Managed databases may be out of date', { id: 'services', description: error })
+      else toast.dismiss('services')
     }
     return () => es.close()
   }, [live])

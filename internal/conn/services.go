@@ -1,26 +1,31 @@
 package conn
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/lamprabit/karotx/internal/model"
 )
 
-// LampRabit lists the databases it runs in a JSON services file. KarotX
-// watches that file and shows those databases as managed connections: kept
-// in memory only, never written to the workspace file or the keychain.
-// Format: docs/lamprabit-integration.md.
+// A services file is a JSON list of databases written by another tool (a
+// local dev stack such as LampRabit, a script, ...). KarotX watches it and
+// shows those databases as managed connections: kept in memory only, never
+// written to the workspace file or the keychain. Format: docs/services-file.md.
 
+// managedPrefix keeps managed IDs apart from saved ones. "lr-" is kept from
+// the first (LampRabit-only) version so restored tabs stay attached.
 const managedPrefix = "lr-"
 
 type services struct {
-	Version   int `json:"version"`
+	Version   int    `json:"version"`
+	Source    string `json:"source"` // tool name, shown as the sidebar group
 	Databases []struct {
 		ID       string `json:"id"`
 		Name     string `json:"name"`
@@ -36,6 +41,7 @@ type services struct {
 }
 
 type managed struct {
+	source      string
 	conn        model.Connection
 	password    string
 	unavailable string // why it can't be opened; "" = usable
@@ -43,7 +49,7 @@ type managed struct {
 
 var serviceID = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
-// driverFor maps a LampRabit type to a KarotX driver; "" = not supported yet.
+// driverFor maps a services-file type to a KarotX driver; "" = not supported yet.
 var driverFor = map[string]string{
 	"postgres": "postgres", "mysql": "mysql", "mariadb": "mysql",
 	"sqlite": "sqlite", "redis": "redis", "mongodb": "mongodb",
@@ -58,6 +64,13 @@ func parseServices(data []byte) ([]managed, error) {
 	}
 	if s.Version != 1 {
 		return nil, fmt.Errorf("unsupported version %d (expected 1)", s.Version)
+	}
+	src := strings.TrimSpace(s.Source)
+	if src == "" {
+		src = "Services"
+	}
+	if len(src) > 40 {
+		src = src[:40]
 	}
 	out := make([]managed, 0, len(s.Databases))
 	seen := map[string]bool{}
@@ -76,7 +89,7 @@ func parseServices(data []byte) ([]managed, error) {
 		if d.Type == "redis" && c.Database == "" {
 			c.Database = "0"
 		}
-		m := managed{conn: c, password: d.Password}
+		m := managed{source: src, conn: c, password: d.Password}
 		switch {
 		case c.Driver == "":
 			name := typeName[d.Type]
@@ -86,10 +99,10 @@ func parseServices(data []byte) ([]managed, error) {
 			m.conn.Driver = d.Type
 			m.unavailable = name + " support is coming soon"
 		case d.Status != "running":
-			m.unavailable = "Stopped in LampRabit"
+			m.unavailable = "Stopped in " + src
 		default:
 			if err := m.conn.Validate(); err != nil {
-				m.unavailable = "LampRabit entry is incomplete: " + err.Error()
+				m.unavailable = "Incomplete entry in the services file: " + err.Error()
 			}
 		}
 		out = append(out, m)
@@ -108,9 +121,12 @@ func (m *Manager) findManaged(id string) (managed, bool) {
 	return managed{}, false
 }
 
-var errManaged = errors.New("this connection is managed by LampRabit; change it there")
+func (m *Manager) errManaged(id string) error {
+	x, _ := m.findManaged(id)
+	return fmt.Errorf("this connection is managed by %s; change it there", cmp.Or(x.source, "the services file"))
+}
 
-// Changed returns a channel that is closed the next time the LampRabit list
+// Changed returns a channel that is closed the next time the services list
 // changes. Call it again after it fires.
 func (m *Manager) Changed() <-chan struct{} {
 	m.lr.RLock()
@@ -142,7 +158,7 @@ func (m *Manager) applyServices(list []managed, loadErr error) {
 		}
 		m.managed, m.servicesErr = list, ""
 	} else {
-		m.servicesErr = "LampRabit services file: " + loadErr.Error()
+		m.servicesErr = "Services file: " + loadErr.Error()
 	}
 	close(m.changed)
 	m.changed = make(chan struct{})
@@ -158,7 +174,7 @@ func sameManaged(a, b managed) bool {
 	return string(ja) == string(jb) && a.password == b.password && a.unavailable == b.unavailable
 }
 
-// WatchServices loads the LampRabit services file and reloads it whenever it
+// WatchServices loads the services file and reloads it whenever it
 // changes, until ctx ends.
 // shortcut: polls mtime+size every second instead of OS file events; a
 // same-size rewrite within one mtime tick is missed. Switch to fsnotify if
@@ -173,7 +189,7 @@ func (m *Manager) WatchServices(ctx context.Context, path string) {
 		fi, err := os.Stat(path)
 		switch {
 		case err != nil && !seen:
-			// Not created yet: LampRabit will write it; nothing to show.
+			// Not created yet: the owning tool will write it; nothing to show.
 		case err != nil:
 			if lastSize != -2 {
 				m.applyServices(nil, errors.New("can't read it ("+err.Error()+"); showing the last known list"))
@@ -189,7 +205,7 @@ func (m *Manager) WatchServices(ctx context.Context, path string) {
 					break
 				}
 			}
-			fmt.Fprintln(os.Stderr, "karotx: LampRabit services file:", err)
+			fmt.Fprintln(os.Stderr, "karotx: services file:", err)
 			m.applyServices(nil, err)
 		}
 		select {
