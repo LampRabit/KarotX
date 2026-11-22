@@ -42,6 +42,9 @@ type View struct {
 	Error       string       `json:"error,omitempty"`
 	Info        *driver.Info `json:"info,omitempty"`
 	HasPassword bool         `json:"hasPassword"`
+	// Managed connections come from the LampRabit services file.
+	Managed     bool   `json:"managed,omitempty"`
+	Unavailable string `json:"unavailable,omitempty"` // why it can't be opened
 }
 
 type session struct {
@@ -65,10 +68,24 @@ type Manager struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	queries  map[string]context.CancelFunc
+
+	lr          sync.RWMutex // guards the LampRabit fields below
+	managed     []managed
+	servicesErr string
+	changed     chan struct{}
 }
 
 func NewManager(store *state.Store) *Manager {
-	return &Manager{store: store, sessions: map[string]*session{}, queries: map[string]context.CancelFunc{}}
+	return &Manager{store: store, sessions: map[string]*session{}, queries: map[string]context.CancelFunc{}, changed: make(chan struct{})}
+}
+
+// secretsFor returns a connection's secrets: from the services file for
+// LampRabit connections, from the keychain otherwise.
+func (m *Manager) secretsFor(id string) model.Secrets {
+	if x, ok := m.findManaged(id); ok {
+		return model.Secrets{Password: x.password}
+	}
+	return loadSecrets(id)
 }
 
 func secretKey(id string) string { return "conn:" + id }
@@ -109,6 +126,12 @@ func hopCount(c model.Connection) int {
 }
 
 func (m *Manager) find(id string) (model.Connection, error) {
+	if x, ok := m.findManaged(id); ok {
+		if x.unavailable != "" {
+			return model.Connection{}, errors.New(x.conn.Name + ": " + x.unavailable)
+		}
+		return x.conn, nil
+	}
 	for _, c := range m.store.Get().Connections {
 		if c.ID == id {
 			return c, nil
@@ -139,6 +162,25 @@ func (m *Manager) List() []View {
 		}
 		out[i] = v
 	}
+	m.lr.RLock()
+	defer m.lr.RUnlock()
+	for _, x := range m.managed {
+		v := View{Connection: x.conn, Status: "idle", HasPassword: x.password != "", Managed: true, Unavailable: x.unavailable}
+		if s, ok := m.sessions[x.conn.ID]; ok && x.unavailable == "" {
+			select {
+			case <-s.ready:
+				if s.err != nil {
+					v.Status, v.Error = "error", s.err.Error()
+				} else {
+					info := s.conn.Info()
+					v.Status, v.Info = "connected", &info
+				}
+			default:
+				v.Status = "connecting"
+			}
+		}
+		out = append(out, v)
+	}
 	return out
 }
 
@@ -146,6 +188,9 @@ func (m *Manager) List() []View {
 func (m *Manager) Save(c model.Connection, in *SecretsInput) (model.Connection, error) {
 	if err := c.Validate(); err != nil {
 		return c, err
+	}
+	if strings.HasPrefix(c.ID, managedPrefix) {
+		return c, errManaged
 	}
 	isNew := c.ID == ""
 	if isNew {
@@ -182,6 +227,9 @@ func (m *Manager) Save(c model.Connection, in *SecretsInput) (model.Connection, 
 }
 
 func (m *Manager) Delete(id string) error {
+	if strings.HasPrefix(id, managedPrefix) {
+		return errManaged
+	}
 	m.Disconnect(id)
 	if err := m.store.Update(func(st *state.State) {
 		st.Connections = slices.DeleteFunc(st.Connections, func(c model.Connection) bool { return c.ID == id })
@@ -293,7 +341,7 @@ func (m *Manager) SessionDB(ctx context.Context, id, db string) (driver.Conn, er
 		s = &session{ready: make(chan struct{})}
 		m.sessions[key] = s
 		go func() {
-			opened, err := open(context.Background(), c, loadSecrets(id))
+			opened, err := open(context.Background(), c, m.secretsFor(id))
 			if err == nil {
 				s.conn, s.tunnel = opened.conn, opened.tunnel
 			}

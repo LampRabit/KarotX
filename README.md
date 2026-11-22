@@ -19,6 +19,7 @@ karotx --port 9000 --state ~/work.kxs --theme karot
 | `--state` | `karotx.kxs` | Encrypted workspace file (connections, open tabs) |
 | `--theme` | from state file | UI theme id |
 | `--no-open` | `false` | Don't open the browser on start |
+| `--lamprabit` | — | LampRabit services file to watch; its databases appear live ([docs](docs/lamprabit-integration.md)) |
 
 The workspace file (`.kxs`) is encrypted with a key stored in your OS keychain. Database passwords are also kept in the keychain, never in the file.
 

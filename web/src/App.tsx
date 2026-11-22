@@ -57,6 +57,25 @@ export function App() {
 
   useEffect(() => void load(), [load])
 
+  // LampRabit adds, removes, starts or stops databases by editing its services
+  // file; the server pushes an event each time so the list updates live.
+  const live = !!session?.authenticated && !!state
+  useEffect(() => {
+    if (!live) return
+    const es = new EventSource('/api/connections/events')
+    es.onmessage = async (e) => {
+      const ws = useWorkspace.getState()
+      const before = ws.connections.filter((c) => c.managed).map((c) => c.id)
+      await ws.refresh().catch(() => {})
+      const now = new Set(useWorkspace.getState().connections.map((c) => c.id))
+      before.filter((id) => !now.has(id)).forEach((id) => ws.closeConnectionTabs(id))
+      const { error } = JSON.parse(e.data) as { error?: string }
+      if (error) toast.warning('LampRabit databases may be out of date', { id: 'lamprabit', description: error })
+      else toast.dismiss('lamprabit')
+    }
+    return () => es.close()
+  }, [live])
+
   const theme = state?.settings.theme ?? 'karot'
   const mode = state?.settings.mode ?? 'system'
 

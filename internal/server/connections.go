@@ -16,6 +16,7 @@ import (
 func (s *Server) routeConnections(api *http.ServeMux) {
 	a := s.authed
 	api.HandleFunc("GET /api/connections", a(s.listConnections))
+	api.HandleFunc("GET /api/connections/events", a(s.connectionEvents))
 	api.HandleFunc("POST /api/connections", a(s.saveConnection))
 	api.HandleFunc("PUT /api/connections/{id}", a(s.saveConnection))
 	api.HandleFunc("DELETE /api/connections/{id}", a(s.deleteConnection))
@@ -46,6 +47,29 @@ type saveBody struct {
 
 func (s *Server) listConnections(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.opt.Conns.List())
+}
+
+// connectionEvents streams a message whenever the LampRabit services file
+// changes, so the UI reloads its connection list (server-sent events).
+func (s *Server) connectionEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	for {
+		changed := s.opt.Conns.Changed()
+		data, _ := json.Marshal(map[string]string{"error": s.opt.Conns.ServicesError()})
+		w.Write([]byte("data: " + string(data) + "\n\n"))
+		flusher.Flush()
+		select {
+		case <-changed:
+		case <-r.Context().Done():
+			return
+		}
+	}
 }
 
 func (s *Server) saveConnection(w http.ResponseWriter, r *http.Request) {

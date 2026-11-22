@@ -39,7 +39,13 @@ export type Connection = {
 
 export type Info = { dialect: DriverName; serverVersion: string; database: string }
 export type ConnStatus = 'idle' | 'connecting' | 'connected' | 'error'
-export type ConnView = Connection & { status: ConnStatus; error?: string; info?: Info; hasPassword: boolean }
+export type ConnView = Connection & {
+  status: ConnStatus; error?: string; info?: Info; hasPassword: boolean
+  /** From the LampRabit services file: can't be edited or deleted here. */
+  managed?: boolean
+  /** Why it can't be opened (stopped, or type not supported yet). */
+  unavailable?: string
+}
 /** `null` keeps the stored secret, a string replaces it. */
 export type SecretsInput = { password: string | null; ssh: (string | null)[] }
 

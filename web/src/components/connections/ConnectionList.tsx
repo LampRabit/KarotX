@@ -306,6 +306,8 @@ function ConnectionActions({ conn, onEdit, onDelete, Item, Sep }: {
   Item: typeof MenuItem | typeof CtxItem; Sep: () => ReactNode
 }) {
   const ws = useWorkspace()
+  const copyAddress = <Item icon={<Copy />} onSelect={() => copy(conn.driver === 'sqlite' ? conn.file ?? '' : `${conn.host}:${conn.port ?? ''}`)}>Copy address</Item>
+  if (conn.unavailable) return copyAddress
   return (
     <>
       <Item icon={<LayoutGrid />} onSelect={() => ws.openDatabase(conn.id)}>Open database</Item>
@@ -326,10 +328,14 @@ function ConnectionActions({ conn, onEdit, onDelete, Item, Sep }: {
         <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id })}>New database…</Item>
       )}
       {conn.driver === 'sqlite' && transferItems({ kind: 'database', connId: conn.id, schema: 'main' }, conn.readOnly, Item)}
-      <Item icon={<Pencil />} onSelect={() => onEdit(conn)}>Edit connection…</Item>
-      <Item icon={<Copy />} onSelect={() => copy(conn.driver === 'sqlite' ? conn.file ?? '' : `${conn.host}:${conn.port ?? ''}`)}>Copy address</Item>
-      <Sep />
-      <Item icon={<Trash2 />} danger onSelect={onDelete}>Delete connection…</Item>
+      {!conn.managed && <Item icon={<Pencil />} onSelect={() => onEdit(conn)}>Edit connection…</Item>}
+      {copyAddress}
+      {!conn.managed && (
+        <>
+          <Sep />
+          <Item icon={<Trash2 />} danger onSelect={onDelete}>Delete connection…</Item>
+        </>
+      )}
     </>
   )
 }
@@ -338,12 +344,14 @@ function ConnectionItem({ conn, onEdit }: { conn: ConnView; onEdit: (c: ConnView
   const open = useWorkspace((s) => !!s.expanded[conn.id])
   const { toggle, openConnection, openDatabase, remove } = useWorkspace()
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const expand = () => (open ? toggle(conn.id, false) : openConnection(conn.id))
+  const expand = () =>
+    conn.unavailable ? toast.info(conn.name, { description: conn.unavailable }) : open ? toggle(conn.id, false) : openConnection(conn.id)
 
   return (
-    <li role="none">
+    // LampRabit databases fade in when the services file adds them.
+    <motion.li role="none" initial={conn.managed ? { opacity: 0, y: -4 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
       <ContextMenu content={<ConnectionActions conn={conn} onEdit={onEdit} onDelete={() => setConfirmDelete(true)} Item={CtxItem} Sep={CtxSeparator} />}>
-        <div className="group relative flex h-9 items-center gap-1 rounded-lg pr-1 hover:bg-muted">
+        <div className={cn('group relative flex h-9 items-center gap-1 rounded-lg pr-1 hover:bg-muted', conn.unavailable && 'text-muted-foreground')}>
           {conn.color && <span aria-hidden className="absolute top-2 bottom-2 left-0 w-[3px] rounded-full" style={{ background: conn.color }} />}
           <button
             data-tree-item
@@ -351,23 +359,26 @@ function ConnectionItem({ conn, onEdit }: { conn: ConnView; onEdit: (c: ConnView
             role="treeitem"
             aria-expanded={open}
             onClick={expand}
+            aria-disabled={conn.unavailable ? true : undefined}
             onDoubleClick={() => {
+              if (conn.unavailable) return
               // Double-click: open (or switch to) this connection's database tab, keeping the tree expanded.
               openConnection(conn.id)
               openDatabase(conn.id)
             }}
-            title="Double-click to open the database"
+            title={conn.unavailable ?? 'Double-click to open the database'}
             onKeyDown={(e) => e.key === 'Enter' && e.shiftKey && (e.preventDefault(), openDatabase(conn.id))}
             className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-1.5 text-left"
           >
             <ChevronRight size={13} aria-hidden className={cn('shrink-0 text-muted-foreground transition-transform duration-150', open && 'rotate-90')} />
-            <BrandIcon db={kindOf(conn)} size={22} className="rounded-md" />
+            <BrandIcon db={kindOf(conn)} size={22} className={cn('rounded-md', conn.unavailable && 'opacity-50 grayscale')} />
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
               <span className="truncate text-[13px] font-medium">{conn.name}</span>
+              {conn.unavailable && <span className="shrink-0 truncate text-[11px] text-muted-foreground">{conn.unavailable.includes('coming soon') ? 'Soon' : 'Stopped'}</span>}
               {conn.production && <span className="shrink-0 rounded bg-destructive/10 px-1 text-[10px] font-semibold tracking-wide text-destructive">PROD</span>}
             </span>
           </button>
-          <Tooltip content={conn.status === 'error' ? conn.error : conn.info?.serverVersion ?? statusLabel[conn.status]} side="right">
+          <Tooltip content={conn.unavailable ?? (conn.status === 'error' ? conn.error : conn.info?.serverVersion ?? statusLabel[conn.status])} side="right">
             <span className="flex size-6 items-center justify-center"><StatusDot c={conn} /></span>
           </Tooltip>
           <Menu>
@@ -390,7 +401,7 @@ function ConnectionItem({ conn, onEdit }: { conn: ConnView; onEdit: (c: ConnView
       <Confirm open={confirmDelete} onOpenChange={setConfirmDelete} title={`Delete ${conn.name}?`} confirmLabel="Delete connection" danger onConfirm={() => remove(conn.id)}>
         This removes the saved connection and its passwords from your keychain. Your database itself is not touched.
       </Confirm>
-    </li>
+    </motion.li>
   )
 }
 
@@ -399,9 +410,23 @@ export function ConnectionList({ filter, onEdit }: { filter: string; onEdit: (c:
   const q = filter.trim().toLowerCase()
   const shown = q ? connections.filter((c) => c.name.toLowerCase().includes(q) || (c.host ?? '').toLowerCase().includes(q)) : connections
   if (q && shown.length === 0) return <p className="px-2 py-3 text-[13px] text-muted-foreground">No connections match “{filter}”.</p>
+  const lamprabit = shown.filter((c) => c.managed)
   return (
     <ul id="kx-tree" role="tree" aria-label="Connections" className="space-y-0.5" onKeyDown={onTreeKey}>
-      {shown.map((c) => <ConnectionItem key={c.id} conn={c} onEdit={onEdit} />)}
+      {shown.filter((c) => !c.managed).map((c) => <ConnectionItem key={c.id} conn={c} onEdit={onEdit} />)}
+      {lamprabit.length > 0 && (
+        <li role="none" className="pt-2">
+          <Tooltip content="Added automatically from LampRabit. Manage them in LampRabit." side="right">
+            <div id="kx-lamprabit" className="flex items-center gap-1.5 px-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+              LampRabit
+              <span className="rounded bg-muted px-1 font-mono text-[10px] font-normal normal-case">{lamprabit.length}</span>
+            </div>
+          </Tooltip>
+          <ul role="group" aria-labelledby="kx-lamprabit" className="space-y-0.5">
+            {lamprabit.map((c) => <ConnectionItem key={c.id} conn={c} onEdit={onEdit} />)}
+          </ul>
+        </li>
+      )}
     </ul>
   )
 }

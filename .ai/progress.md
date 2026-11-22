@@ -1,9 +1,13 @@
 # Progress
 
 ## Status
-**Import/export complete** (2026-11-21), after v0.1.0. Next: Phase 5 (ClickHouse, Neo4j, Memcached, DynamoDB).
+**LampRabit integration** (2026-11-22): `--lamprabit <file>` watches LampRabit's services file and shows its databases live. Next: Phase 5 (ClickHouse, Neo4j, Memcached, DynamoDB).
 
 ## Done
+- 2026-11-22 LampRabit integration (contract: docs/lamprabit-integration.md):
+  - `--lamprabit <file>` polls the services file every second; databases show as managed connections in a "LampRabit" sidebar group. They live in memory only (never in the .kxs or keychain), can't be edited or deleted, and unsupported types (ClickHouse, Neo4j, Memcached) or stopped ones are shown greyed with the reason.
+  - The UI listens on `GET /api/connections/events` (server-sent events) and reloads the list on every change; tabs of removed databases close; a broken file keeps the last good list and shows a warning toast.
+  - Verified: Go tests (parsing, add/remove/broken-file reload), live binary run (file created after start, picked up, SSE pushed). Not yet clicked through in a browser.
 - Requirements gathered (see context.md, decisions.md).
 - Phase 0: CLI flags, encrypted state file (key in OS keychain), optional password auth (session cookie, 30 days), embedded React UI, theme token system with `karot` theme (light/dark/system), app shell (sidebar, welcome screen, login).
   - Verified: state survives restart, wrong-password rejection, SPA fallback, screenshots in both modes.

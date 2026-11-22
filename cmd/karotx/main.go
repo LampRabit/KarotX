@@ -37,6 +37,7 @@ func run() error {
 	port := flag.Int("port", 8732, "port to listen on")
 	statePath := flag.String("state", "karotx.kxs", "path to the encrypted workspace file (.kxs)")
 	theme := flag.String("theme", "", "UI theme id (overrides the state file)")
+	services := flag.String("lamprabit", "", "LampRabit services file to watch; its databases appear automatically")
 	noOpen := flag.Bool("no-open", false, "don't open the browser on start")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -82,6 +83,10 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	if *services != "" {
+		go conns.WatchServices(ctx, *services)
+		fmt.Printf("  LampRabit: watching %s\n\n", *services)
+	}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
