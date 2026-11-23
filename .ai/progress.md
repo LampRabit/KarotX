@@ -104,6 +104,7 @@
   - Fixed: RedisTab selector returned a fresh `[]` before the tree loaded, which looped React until the page went blank (pre-existing; Memcached made it reliable).
   - Verified: Go unit tests (fake memcached, filter translation, value round trip, Cypher write classification); live tests against Memcached 1.6.45, DynamoDB Local 3.3 and Neo4j 2026.10 (incl. the tunnel forwarder); frontend tests (`cypher.test.mjs`); a Playwright walkthrough in Edge (light and dark) of all three through `--services`.
   - Not verified live: ClickHouse (no Windows server build available here); Neo4j/DynamoDB over TLS and real AWS.
+- 2026-11-24: Tagged `v0.2.0`; GitHub Actions built the six archives and checksums into a draft release for the owner to review and publish.
 
 ## Next
 - Phase 6: more themes, website.
