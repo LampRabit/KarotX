@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { toast } from 'sonner'
-import { api, newId, type ConnView, type TableRef, type TreeNode } from './api'
+import { api, isKv, newId, type ConnView, type TableRef, type TreeNode } from './api'
 import { track } from './activity'
 import type { Commander } from './commander'
 
@@ -11,6 +11,8 @@ export type Tab =
   | { id: string; kind: 'database'; connId: string; title: string; schema?: string; database?: string; sql?: string }
   /** Redis key browser for one logical database. */
   | { id: string; kind: 'redis'; connId: string; title: string; db: number }
+  /** Neo4j graph view of one database, optionally scoped to a label or relationship type. */
+  | { id: string; kind: 'graph'; connId: string; title: string; db: string; label?: string; rel?: string }
 
 type TreeEntry = { nodes?: TreeNode[]; loading: boolean; error?: string }
 
@@ -38,6 +40,7 @@ type Workspace = {
   /** Opens a query tab: the visual builder unless SQL text is given. */
   openQuery: (connId: string, sql?: string, schema?: string, database?: string, builder?: Commander) => void
   openDatabase: (connId: string, schema?: string, database?: string) => void
+  openGraph: (connId: string, db: string, scope?: { label?: string; rel?: string }) => void
   closeTab: (id: string) => void
   closeTabs: (ids: string[]) => void
   schemaChanged: (connId: string, schema?: string, database?: string) => void
@@ -79,7 +82,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   schemaVersion: {},
 
   init: (tabs, activeTab, expanded) => {
-    const valid = (tabs as Tab[]).filter((t) => t && t.id && t.connId && ['table', 'query', 'database', 'redis'].includes(t.kind))
+    const valid = (tabs as Tab[]).filter((t) => t && t.id && t.connId && ['table', 'query', 'database', 'redis', 'graph'].includes(t.kind))
     set({
       tabs: valid,
       activeTab: valid.some((t) => t.id === activeTab) ? activeTab! : '',
@@ -163,18 +166,28 @@ export const useWorkspace = create<Workspace>((set, get) => ({
 
   openDatabase: (connId, schema, database) => {
     const conn = get().connections.find((c) => c.id === connId)
-    if (conn?.driver === 'redis') {
+    if (conn && isKv(conn.driver)) {
       // Redis "databases" are numbered key spaces: open the key browser.
       const db = Number(schema ?? conn.database ?? 0) || 0
       const open = get().tabs.find((t) => t.kind === 'redis' && t.connId === connId && t.db === db)
       if (open) return set({ activeTab: open.id })
-      const tab: Tab = { id: newId(), kind: 'redis', connId, title: `${conn.name} · db${db}`, db }
+      const tab: Tab = { id: newId(), kind: 'redis', connId, title: conn.driver === 'memcached' ? conn.name : `${conn.name} · db${db}`, db }
       return set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
     }
+    if (conn?.driver === 'neo4j') return get().openGraph(connId, schema ?? conn.database ?? '')
     const existing = get().tabs.find((t) => t.kind === 'database' && t.connId === connId && (!schema || t.schema === schema) && (!database || t.database === database))
     if (existing) return set({ activeTab: existing.id })
     const name = get().connections.find((c) => c.id === connId)?.name ?? 'Database'
     const tab: Tab = { id: newId(), kind: 'database', connId, title: schema ?? database ?? name, schema, database }
+    set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
+  },
+
+  openGraph: (connId, db, scope = {}) => {
+    const same = (t: Tab) => t.kind === 'graph' && t.connId === connId && t.db === db && (t.label ?? '') === (scope.label ?? '') && (t.rel ?? '') === (scope.rel ?? '')
+    const existing = get().tabs.find(same)
+    if (existing) return set({ activeTab: existing.id })
+    const name = get().connections.find((c) => c.id === connId)?.name ?? 'Graph'
+    const tab: Tab = { id: newId(), kind: 'graph', connId, title: scope.label ?? scope.rel ?? (db || name), db, ...scope }
     set((s) => ({ tabs: [...s.tabs, tab], activeTab: tab.id }))
   },
 

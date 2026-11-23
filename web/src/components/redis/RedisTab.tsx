@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Clock, Copy, Download, KeyRound, Plus, RefreshCw, Search, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, type ConnView, type RedisKey, type RedisKeyData } from '@/lib/api'
+import { api, type ConnView, type RedisKey, type RedisKeyData, type TreeNode } from '@/lib/api'
 import { track } from '@/lib/activity'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
@@ -21,6 +21,7 @@ import { NewKeyDialog } from './NewKeyDialog'
 import { RedisConsole } from './RedisConsole'
 
 type RTab = Extract<Tab, { kind: 'redis' }>
+const noNodes: TreeNode[] = [] // stable: a fresh [] in the selector re-renders forever
 
 export const typeStyle: Record<string, { label: string; cls: string }> = {
   string: { label: 'STR', cls: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
@@ -55,7 +56,7 @@ const typeOptions = [
 
 export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
   const { updateTab, loadTree } = useWorkspace()
-  const dbNodes = useWorkspace((s) => s.trees[treeKey(conn.id, [])]?.nodes ?? [])
+  const dbNodes = useWorkspace((s) => s.trees[treeKey(conn.id, [])]?.nodes) ?? noNodes
   const db = tab.db
   const [query, setQuery] = useState('')
   const [type, setType] = useState('')
@@ -70,6 +71,8 @@ export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
   const listRef = useRef<HTMLUListElement>(null)
   const showSpinner = useDelayed(loading, 150)
   const { guard, dialog } = useGuard(conn.name)
+  // Memcached: one key space, string values only.
+  const mc = conn.driver === 'memcached'
 
   useEffect(() => void loadTree(conn.id, []), [conn.id, loadTree])
   // Keep the sidebar's "N keys" in step with writes made here.
@@ -143,10 +146,12 @@ export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
       {/* Toolbar */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <BrandIcon db={kindOf(conn)} size={28} />
-        <div className="w-24 shrink-0">
-          <Select variant="token" label="Database" value={String(db)} options={dbOptions}
-            onChange={(v) => (updateTab(tab.id, { db: Number(v), title: `${conn.name} · db${v}` } as Partial<Tab>), setSelected(undefined))} />
-        </div>
+        {!mc && (
+          <div className="w-24 shrink-0">
+            <Select variant="token" label="Database" value={String(db)} options={dbOptions}
+              onChange={(v) => (updateTab(tab.id, { db: Number(v), title: `${conn.name} · db${v}` } as Partial<Tab>), setSelected(undefined))} />
+          </div>
+        )}
         <label className="relative min-w-40 max-w-md flex-1">
           <span className="sr-only">Search keys</span>
           <Search size={14} aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
@@ -154,7 +159,7 @@ export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
             onKeyDown={(e) => e.key === 'ArrowDown' && keys?.[0] && (e.preventDefault(), setSelected(keys[0].key), listRef.current?.focus())}
             className="h-8 w-full rounded-lg border bg-background pr-2 pl-8 font-mono text-[12.5px] outline-none transition focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20" />
         </label>
-        <div className="w-32 shrink-0"><Select variant="token" label="Key type" value={type} options={typeOptions} onChange={setType} /></div>
+        {!mc && <div className="w-32 shrink-0"><Select variant="token" label="Key type" value={type} options={typeOptions} onChange={setType} /></div>}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <span className="hidden text-xs text-muted-foreground tabular-nums md:inline">{total !== undefined && `${total.toLocaleString()} keys`}</span>
           <Tooltip content="Reload keys">
@@ -188,7 +193,7 @@ export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
           ) : keys.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
               <KeyRound size={22} aria-hidden />
-              <p className="text-[13px]">{query || type ? 'No keys match.' : `db${db} is empty.`}</p>
+              <p className="text-[13px]">{query || type ? 'No keys match.' : mc ? 'The cache is empty.' : `db${db} is empty.`}</p>
               {!conn.readOnly && !query && <Button size="sm" variant="secondary" onClick={() => setNewKey(true)}><Plus size={13} aria-hidden /> Add a key</Button>}
             </div>
           ) : (
@@ -230,7 +235,7 @@ export function RedisTab({ tab, conn }: { tab: RTab; conn: ConnView }) {
 
       <RedisConsole conn={conn} db={db} onWrite={() => load(false)} />
 
-      <NewKeyDialog connId={conn.id} db={db} open={newKey} onClose={() => setNewKey(false)} run={run} onCreated={(k) => { setNewKey(false); setSelected(k); load(false) }} />
+      <NewKeyDialog connId={conn.id} db={db} stringsOnly={mc} open={newKey} onClose={() => setNewKey(false)} run={run} onCreated={(k) => { setNewKey(false); setSelected(k); load(false) }} />
       <Confirm open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(undefined)} title={`Delete ${confirmDelete}?`} confirmLabel="Delete key" danger
         onConfirm={() => deleteKey(confirmDelete!)}>
         The key and its value are removed permanently.

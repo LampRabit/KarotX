@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 )
 
-// Document is implemented by document databases (MongoDB). Documents travel
-// as MongoDB Extended JSON (relaxed), so ObjectIds and dates round-trip.
+// Document is implemented by document databases (MongoDB, DynamoDB).
+// MongoDB documents travel as Extended JSON (relaxed), so ObjectIds and dates
+// round-trip; DynamoDB uses tagged objects for its non-JSON types.
 type Document interface {
 	Conn
 	TableLister // collections of a database, with estimated counts
@@ -19,7 +20,10 @@ type Document interface {
 	Delete(ctx context.Context, db, coll string, ids []json.RawMessage) (int64, error)
 	Aggregate(ctx context.Context, db, coll string, pipeline json.RawMessage, limit int) ([]json.RawMessage, error)
 	RunCommand(ctx context.Context, db string, cmd json.RawMessage) (json.RawMessage, error)
-	CreateCollection(ctx context.Context, db, coll string) error
+	// ClassifyCommand reports whether a console command only reads, and how to show it.
+	ClassifyCommand(cmd json.RawMessage) (read bool, label string)
+	// CreateCollection creates a collection; keys are its key attributes (DynamoDB only).
+	CreateCollection(ctx context.Context, db, coll string, keys []KeyAttr) error
 	DropCollection(ctx context.Context, db, coll string) error
 	DropDatabase(ctx context.Context, db string) error
 	// Each streams every matching document (no limit unless q.Limit > 0), for export.
@@ -36,11 +40,19 @@ type FindRequest struct {
 	Limit      int64           `json:"limit"`
 }
 
+// KeyAttr is a DynamoDB key attribute: Type is S, N or B.
+type KeyAttr struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
 type FindResult struct {
-	Docs       []json.RawMessage `json:"docs"`
-	Total      int64             `json:"total"`
-	Estimated  bool              `json:"estimated"` // total is an estimate (no filter, or the count timed out)
-	DurationMs float64           `json:"durationMs"`
+	Docs []json.RawMessage `json:"docs"`
+	// Key lists the fields that identify a document (DynamoDB); empty = "_id".
+	Key        []string `json:"key,omitempty"`
+	Total      int64    `json:"total"`
+	Estimated  bool     `json:"estimated"` // total is an estimate (no filter, or the count timed out)
+	DurationMs float64  `json:"durationMs"`
 }
 
 type FieldInfo struct {

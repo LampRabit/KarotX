@@ -120,7 +120,7 @@ func (c *conn) Query(ctx context.Context, src string, opt driver.QueryOptions) (
 		} else {
 			var res sql.Result
 			if res, err = sc.ExecContext(ctx, s); err == nil {
-				if n, e := res.RowsAffected(); e == nil {
+				if n, e := res.RowsAffected(); e == nil && c.d.name() != "clickhouse" { // ClickHouse doesn't report counts
 					r.RowsAffected = &n
 				}
 			}
@@ -218,7 +218,9 @@ func (c *conn) Browse(ctx context.Context, b driver.BrowseRequest) (*driver.Resu
 	if err != nil {
 		return nil, err
 	}
-	r.PrimaryKey = pk
+	if c.d.name() != "clickhouse" { // its primary key isn't unique, so rows can't be addressed for edits
+		r.PrimaryKey = pk
+	}
 	return r, nil
 }
 

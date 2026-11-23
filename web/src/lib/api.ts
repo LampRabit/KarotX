@@ -9,9 +9,13 @@ export type Session = {
   local: boolean // request comes from the machine running KarotX
 }
 
-export type DriverName = 'postgres' | 'mysql' | 'sqlite' | 'redis' | 'mongodb'
-export type SqlDriver = 'postgres' | 'mysql' | 'sqlite'
-export const isSql = (d: DriverName): d is SqlDriver => d === 'postgres' || d === 'mysql' || d === 'sqlite'
+export type DriverName = 'postgres' | 'mysql' | 'sqlite' | 'clickhouse' | 'redis' | 'memcached' | 'mongodb' | 'dynamodb' | 'neo4j'
+export type SqlDriver = 'postgres' | 'mysql' | 'sqlite' | 'clickhouse'
+export const isSql = (d: DriverName): d is SqlDriver => d === 'postgres' || d === 'mysql' || d === 'sqlite' || d === 'clickhouse'
+/** Key-value stores share the key browser (Memcached speaks Redis-style commands). */
+export const isKv = (d: DriverName) => d === 'redis' || d === 'memcached'
+/** Document stores share the collection view (DynamoDB tables are collections). */
+export const isDoc = (d: DriverName) => d === 'mongodb' || d === 'dynamodb'
 export type TLSMode = 'off' | 'prefer' | 'require' | 'verify'
 export type SSHAuth = 'password' | 'key' | 'agent'
 export type SSHHop = { host: string; port?: number; user: string; auth: SSHAuth; keyFile?: string; hostKey?: string }
@@ -53,7 +57,7 @@ export type SecretsInput = { password: string | null; ssh: (string | null)[] }
 
 export type TreeNode = {
   name: string
-  kind: 'database' | 'schema' | 'table' | 'view' | 'column'
+  kind: 'database' | 'schema' | 'table' | 'view' | 'column' | 'label' | 'reltype'
   path: string[]
   hasChildren: boolean
   detail?: string
@@ -90,7 +94,13 @@ export type RedisKeyData = {
   truncated: boolean
   binary: boolean
 }
-export type MongoFindResult = { docs: Record<string, unknown>[]; total: number; estimated: boolean; durationMs: number }
+/** `key`: fields that identify a document (DynamoDB); absent = `_id`. */
+export type MongoFindResult = { docs: Record<string, unknown>[]; total: number; estimated: boolean; durationMs: number; key?: string[] }
+export type KeyAttr = { name: string; type: 'S' | 'N' | 'B' }
+export type GraphNode = { id: string; labels: string[]; props: Record<string, unknown> }
+export type GraphRel = { id: string; type: string; start: string; end: string; props: Record<string, unknown> }
+/** Row values are JSON, except `{ $node: id }`, `{ $rel: id }` and `{ $path: ids }`, which point into nodes/rels. */
+export type GraphResult = { columns: string[]; rows: unknown[][]; nodes: GraphNode[]; rels: GraphRel[]; truncated?: boolean; summary?: string; durationMs: number }
 export type MongoField = { path: string; type: string }
 
 export type FsEntry = { name: string; path: string; dir: boolean; size: number; modified: string }
@@ -193,9 +203,14 @@ export const api = {
       request<{ docs: Record<string, unknown>[] }>('POST', `/connections/${id}/mongo/aggregate`, { db, collection, pipeline, confirmed }),
     command: (id: string, db: string, command: unknown, confirmed = false) =>
       request<{ result: unknown }>('POST', `/connections/${id}/mongo/command`, { db, command, confirmed }),
-    createCollection: (id: string, db: string, collection: string) => request<void>('POST', `/connections/${id}/mongo/collection`, { db, collection }),
+    /** `keys`: DynamoDB partition (and sort) key. */
+    createCollection: (id: string, db: string, collection: string, keys?: KeyAttr[]) => request<void>('POST', `/connections/${id}/mongo/collection`, { db, collection, keys }),
     /** Drops a collection, or the whole database when `collection` is empty. */
     drop: (id: string, db: string, collection = '', confirmed = false) => request<void>('POST', `/connections/${id}/mongo/drop`, { db, collection, confirmed }),
+  },
+  graph: {
+    run: (id: string, db: string, query: string, params: Record<string, unknown> = {}, confirmed = false, queryId?: string) =>
+      request<GraphResult>('POST', `/connections/${id}/graph/run`, { db, query, params, confirmed, queryId }),
   },
   fs: (path: string) => request<FsListing>('GET', `/fs?path=${enc(path)}`),
   createSqlite: (dir: string, name: string) => request<{ path: string }>('POST', '/fs/sqlite', { dir, name }),

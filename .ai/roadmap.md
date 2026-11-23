@@ -33,7 +33,7 @@ Phases 0–4 make up the MVP.
 - Export tables, query results, collections and Redis keys to CSV / JSON / JSON Lines / SQL; whole databases as SQL dumps (MongoDB: zip of JSON Lines).
 - Import CSV / JSON into new or existing tables and collections with column mapping; run .sql files; restore Redis exports; copy between connections.
 
-### Phase 5 — More drivers
+### Phase 5 — More drivers ✅
 - ClickHouse, Neo4j (graph view), Memcached, DynamoDB.
 
 ### Phase 6 — Polish & ship

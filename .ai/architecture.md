@@ -25,8 +25,10 @@ internal/model/      persisted connection config (no secrets)
 internal/conn/       connection manager: sessions, keychain secrets, cancellable queries
 internal/tunnel/     SSH tunnel (hops, auth methods, host-key pinning)
 internal/driver/     Driver interface, registry, SQL splitter/classifier
-internal/driver/sqldb/  database/sql core + postgres/mysql/sqlite dialects
-(later) internal/driver/{redis,mongo,...}/
+internal/driver/sqldb/  database/sql core + postgres/mysql/sqlite/clickhouse dialects
+internal/driver/redisdrv/, memcachedrv/   key-value (Memcached: own text/meta protocol client)
+internal/driver/mongodrv/, dynamodrv/     document (DynamoDB: AWS SDK v2)
+internal/driver/neo4jdrv/                 graph (official Bolt driver)
 web/                 Vite + React + TS app; built to web/dist and embedded
 .ai/                 shared agent/human context
 ```
@@ -49,12 +51,13 @@ type Conn interface {                 // every driver
 type TableLister interface { Tables(ctx, schema) ([]TableInfo, error) }          // SQL + Mongo cards
 type SQL interface { Query; Columns; Databases; ForeignKeys; Browse; Apply }      // sqldb (Postgres/MySQL/SQLite)
 type KeyValue interface { Scan; GetKey; Do; IsWrite(args); DBSize; Dump; Restore } // redisdrv
-type Document interface { Find; Fields; Insert; Replace; Delete; Aggregate; RunCommand; Create/Drop…; Each; DeleteAll } // mongodrv
+type Document interface { Find; Fields; Insert; Replace; Delete; Aggregate; RunCommand; ClassifyCommand; Create/Drop…; Each; DeleteAll } // mongodrv, dynamodrv
+type Graph interface { Run(db, cypher, params, write, maxRows) } // neo4jdrv
 type Transfer interface { StreamRows; CreateTableSQL; InsertRows; ExecScript; Quote; Literal } // sqldb: export/import
 ```
 
-- The server looks capabilities up per request (`asSQL`, `s.kv`, `s.doc`) and serves `/api/connections/{id}/redis/*`, `/mongo/*`, `/export` and `/import/*` routes. The frontend picks the tab by driver: SQL table tab, Mongo collection tab, Redis key-browser tab.
-- Read-only and production rules for non-SQL drivers are enforced in the server: Redis classifies commands with `IsWrite` (COMMAND flags plus admin subcommands); MongoDB blocks writes, `$out`/`$merge` stages and non-read commands.
+- The server looks capabilities up per request (`asSQL`, `s.kv`, `s.doc`, `driver.Graph`) and serves `/api/connections/{id}/redis/*`, `/mongo/*`, `/graph/run`, `/export` and `/import/*` routes. The frontend picks the tab by capability: SQL table tab (Postgres, MySQL, SQLite, ClickHouse), collection tab (MongoDB, DynamoDB), key-browser tab (Redis, Memcached), graph tab (Neo4j).
+- Read-only and production rules for non-SQL drivers are enforced in the server: Redis classifies commands with `IsWrite` (COMMAND flags plus admin subcommands); MongoDB blocks writes, `$out`/`$merge` stages and non-read commands; DynamoDB treats every PartiQL statement but SELECT as a write; Cypher is classified by keyword and reads run in a read-only transaction as a safety net.
 
 - `Tree` is lazy (expand on demand) so large schemas stay fast.
 - Results are paged and streamed in chunks, and the grid is virtualized, so big tables never load fully into memory.

@@ -17,14 +17,14 @@ export function targetLabel(t: TransferTarget, conn: ConnView) {
     case 'database': return conn.driver === 'sqlite' ? conn.name : t.schema
     case 'collection': return t.collection
     case 'mongo-db': return t.db
-    case 'redis': return `db${t.db}`
+    case 'redis': return conn.driver === 'memcached' ? 'all keys' : `db${t.db}`
   }
 }
 
 /** A default file name (without extension) for an export. */
 export function targetFileBase(t: TransferTarget, conn: ConnView) {
   if (t.kind === 'query') return 'query_result'
-  if (t.kind === 'redis') return safeName(`${conn.name}_db${t.db}`)
+  if (t.kind === 'redis') return safeName(conn.driver === 'memcached' ? conn.name : `${conn.name}_db${t.db}`)
   return safeName(targetLabel(t, conn))
 }
 

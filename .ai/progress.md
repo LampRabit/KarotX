@@ -1,7 +1,7 @@
 # Progress
 
 ## Status
-**Services-file integration** (2026-11-22): `--services <file>` (alias `--lamprabit`) watches a services file and shows the listed databases live. Next: Phase 5 (ClickHouse, Neo4j, Memcached, DynamoDB).
+**Phase 5 done** (2026-11-24): ClickHouse, Neo4j, Memcached and DynamoDB, UI first. Released as `v0.2.0` (draft). Next: Phase 6 polish (more themes, website).
 
 ## Done
 - 2026-11-22 Services-file integration (contract: docs/services-file.md), generic since KarotX is public; LampRabit is the first user:
@@ -95,8 +95,18 @@
   - .sql files run statement by statement with live progress and per-statement errors (stop or continue). Redis exports restore with skip/replace. "Copy from another connection" reads any SQL table or Mongo collection page by page.
   - Verified: Go unit tests (SQLite transfer, literals, row writers, FK order, Redis dump/restore); frontend unit tests (CSV parser, inference, mapping, conversion); Playwright walkthrough in Edge of every SQLite and Redis flow, light and dark. MongoDB and Postgres/MySQL exports were not run live (LampRabit's database runtimes are not installed right now).
 
+- 2026-11-24 Phase 5: ClickHouse, Neo4j, Memcached, DynamoDB (design in decisions.md).
+  - ClickHouse: `sqldb` dialect; designer creates MergeTree tables; grid read-only. Presets: ClickHouse, ClickHouse Cloud.
+  - Memcached: `memcachedrv` (own text/meta protocol client) behind the Redis key browser. Key listing uses `lru_crawler metadump`, which memcached documents as best effort: once in a walkthrough a just-viewed key was missing from one search (not reproducible in 12 retries).
+  - DynamoDB: `dynamodrv` behind the collection tab; filters → Query/Scan expressions; PartiQL console; new-table dialog with keys.
+  - Neo4j: `Graph` capability, `neo4jdrv`, graph tab (SVG force layout, `lib/cypher.ts`). Presets: Neo4j, Neo4j Aura. URL paste for neo4j://, bolt://, clickhouse://.
+  - Services file now enables all four types; unknown types show "Unavailable".
+  - Fixed: RedisTab selector returned a fresh `[]` before the tree loaded, which looped React until the page went blank (pre-existing; Memcached made it reliable).
+  - Verified: Go unit tests (fake memcached, filter translation, value round trip, Cypher write classification); live tests against Memcached 1.6.45, DynamoDB Local 3.3 and Neo4j 2026.10 (incl. the tunnel forwarder); frontend tests (`cypher.test.mjs`); a Playwright walkthrough in Edge (light and dark) of all three through `--services`.
+  - Not verified live: ClickHouse (no Windows server build available here); Neo4j/DynamoDB over TLS and real AWS.
+
 ## Next
-- Phase 5: ClickHouse, Neo4j (graph view), Memcached, DynamoDB, UI first.
+- Phase 6: more themes, website.
 - Possible Commander follow-ups: self-joins (table aliases), date-part grouping (by day/month), and value pickers that suggest distinct values.
 
 ## Open questions

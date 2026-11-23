@@ -74,7 +74,9 @@ export function RedisConsole({ conn, db, onWrite }: { conn: ConnView; db: number
     <div className="shrink-0 border-t bg-sidebar/50">
       {open && (
         <div ref={outRef} className="max-h-56 overflow-y-auto border-b px-4 py-2 font-mono text-[12.5px]" aria-live="polite">
-          {log.length === 0 && <p className="text-muted-foreground">Run any Redis command, e.g. <span className="text-foreground">INFO memory</span> or <span className="text-foreground">HGETALL user:1</span>.</p>}
+          {log.length === 0 && (conn.driver === 'memcached'
+            ? <p className="text-muted-foreground">Run a command, e.g. <span className="text-foreground">STATS</span>, <span className="text-foreground">GET user:1</span> or <span className="text-foreground">SET user:1 Ann EX 60</span>.</p>
+            : <p className="text-muted-foreground">Run any Redis command, e.g. <span className="text-foreground">INFO memory</span> or <span className="text-foreground">HGETALL user:1</span>.</p>)}
           {log.map((e, i) => (
             <div key={i} className="py-1">
               <p className="text-primary">db{db}&gt; {e.cmd}</p>
@@ -85,8 +87,8 @@ export function RedisConsole({ conn, db, onWrite }: { conn: ConnView; db: number
       )}
       <form onSubmit={(e) => (e.preventDefault(), run())} className="flex items-center gap-2 px-3 py-2">
         <Terminal size={15} className="shrink-0 text-muted-foreground" aria-hidden />
-        <input value={line} onChange={(e) => setLine(e.target.value)} onKeyDown={onKey} spellCheck={false} aria-label="Redis command"
-          placeholder="Type a Redis command and press Enter  (↑ for history)"
+        <input value={line} onChange={(e) => setLine(e.target.value)} onKeyDown={onKey} spellCheck={false} aria-label="Command"
+          placeholder={conn.driver === 'memcached' ? 'Type a command (GET, SET, DEL, TTL, INCR, STATS …) and press Enter' : 'Type a Redis command and press Enter  (↑ for history)'}
           className="h-8 min-w-0 flex-1 rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20" />
         <button type="button" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Hide console output' : 'Show console output'}
           className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground">

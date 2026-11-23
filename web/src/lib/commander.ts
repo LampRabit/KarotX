@@ -90,7 +90,7 @@ type TypeOf = (c: ColRef) => string
 
 export function filterSql(d: DriverName, f: Filter, col: string, type: string) {
   const cat = categoryOf(type)
-  const like = d === 'postgres' ? 'ILIKE' : 'LIKE' // case-insensitive "contains"
+  const like = d === 'postgres' || d === 'clickhouse' ? 'ILIKE' : 'LIKE' // case-insensitive "contains"
   const text = d === 'postgres' && cat !== 'text' ? `${col}::text` : col
   switch (f.op) {
     case 'eq': return `${col} = ${literal(f.value, cat)}`

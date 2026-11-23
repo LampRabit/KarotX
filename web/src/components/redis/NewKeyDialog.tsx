@@ -13,7 +13,11 @@ const firstValue: Record<KeyType, string[]> = {
 }
 
 /** Create a key of any type with a first value, and an optional expiry. */
-export function NewKeyDialog({ connId, db, open, onClose, run, onCreated }: { connId: string; db: number; open: boolean; onClose: () => void; run: RunCommand; onCreated: (key: string) => void }) {
+export function NewKeyDialog({ connId, db, open, onClose, run, onCreated, stringsOnly }: {
+  connId: string; db: number; open: boolean; onClose: () => void; run: RunCommand; onCreated: (key: string) => void
+  /** Memcached stores only strings. */
+  stringsOnly?: boolean
+}) {
   const [name, setName] = useState('')
   const [type, setType] = useState<KeyType>('string')
   const [vals, setVals] = useState<string[]>(['', ''])
@@ -57,11 +61,11 @@ export function NewKeyDialog({ connId, db, open, onClose, run, onCreated }: { co
       <form onSubmit={(e) => (e.preventDefault(), create())} className="space-y-4 p-6">
         <h2 className="text-[15px] font-semibold">New key</h2>
         <Input label="Key name" value={name} onChange={(e) => (setName(e.target.value), setError(''))} placeholder="e.g. user:42:profile" autoFocus required error={error} />
-        <div>
+        {!stringsOnly && <div>
           <p className="mb-1.5 text-[13px] font-medium">Type</p>
           <Segmented label="Key type" value={type} onChange={setType} className="w-full"
             options={[{ value: 'string', label: 'String' }, { value: 'hash', label: 'Hash' }, { value: 'list', label: 'List' }, { value: 'set', label: 'Set' }, { value: 'zset', label: 'Sorted set' }, { value: 'stream', label: 'Stream' }]} />
-        </div>
+        </div>}
         <div className="grid grid-cols-2 gap-3">
           {firstValue[type].map((f, i) => (
             <Input key={type + f} className={firstValue[type].length === 1 ? 'col-span-2' : undefined} label={i === 0 && type !== 'string' ? `First ${f.toLowerCase()}` : f}

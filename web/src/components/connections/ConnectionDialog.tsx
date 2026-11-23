@@ -45,7 +45,12 @@ const urlExample: Record<string, string> = {
   mysql: 'mysql://user:password@host:3306/database',
   redis: 'redis://user:password@host:6379/0  (rediss:// for TLS)',
   mongodb: 'mongodb+srv://user:password@cluster0.xxxxx.mongodb.net/db',
+  clickhouse: 'clickhouse://default:password@host:9000/database',
+  neo4j: 'neo4j+s://neo4j:password@xxxxxxxx.databases.neo4j.io',
 }
+
+/** Drivers without a "prefer" TLS mode (encryption is either on or off). */
+const noPrefer = new Set(['redis', 'memcached', 'clickhouse', 'neo4j', 'dynamodb'])
 
 const newHop = (): SSHHop => ({ host: '', port: 22, user: '', auth: 'key', keyFile: '~/.ssh/id_ed25519' })
 
@@ -100,7 +105,7 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
 
   function pasteUrl(raw: string) {
     const parsed = parseConnectionUrl(raw)
-    if (!parsed) return setUrlNote(raw.trim() ? 'This does not look like a postgres:// or mysql:// URL.' : '')
+    if (!parsed) return setUrlNote(raw.trim() ? 'This does not look like a connection URL KarotX knows.' : '')
     set({ ...parsed.conn, tls: { ...c!.tls, ...parsed.conn.tls } })
     if (parsed.password !== undefined) setPassword(parsed.password)
     setUrlNote('Filled in from the URL. Check the fields below.')
@@ -194,7 +199,7 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                 onSubmit={(e) => (e.preventDefault(), save(!editing))}
                 className="space-y-5"
               >
-                {network && (
+                {network && urlExample[c.driver] && (
                   <div className="rounded-xl bg-muted/50 p-3.5">
                     <Input
                       label="Have a connection URL? Paste it here"
@@ -240,13 +245,16 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                         description="Used by MongoDB Atlas and other hosted clusters: enter the cluster host name, without a port." />
                     )}
                     <div className={cn('grid gap-3', c.srv ? 'grid-cols-1' : 'grid-cols-[1fr_110px]')}>
-                      <Input label={c.driver === 'mongodb' && !c.srv ? 'Host (or a seed list: a:27017,b:27017)' : 'Host'} placeholder={kind.defaults?.hostHint ?? 'localhost'} value={c.host ?? ''} onChange={(e) => set({ host: e.target.value })} required />
+                      <Input label={c.driver === 'mongodb' && !c.srv ? 'Host (or a seed list: a:27017,b:27017)' : c.driver === 'dynamodb' ? 'Endpoint host (optional)' : 'Host'}
+                        placeholder={kind.defaults?.hostHint ?? 'localhost'} value={c.host ?? ''} onChange={(e) => set({ host: e.target.value })} required={c.driver !== 'dynamodb'}
+                        hint={c.driver === 'dynamodb' ? 'Leave empty for AWS. Use localhost for DynamoDB Local.' : undefined} />
                       {!c.srv && <Input label="Port" inputMode="numeric" value={c.port ?? ''} onChange={(e) => set({ port: Number(e.target.value.replace(/\D/g, '')) || undefined })} />}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <Input label={c.driver === 'redis' ? 'User (ACL, optional)' : 'User'} value={c.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
+                      <Input label={c.driver === 'redis' ? 'User (ACL, optional)' : c.driver === 'memcached' ? 'User (optional)' : c.driver === 'dynamodb' ? 'Access key ID' : 'User'}
+                        value={c.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
                       <Input
-                        label="Password"
+                        label={c.driver === 'dynamodb' ? 'Secret access key' : 'Password'}
                         type="password"
                         autoComplete="new-password"
                         value={password ?? ''}
@@ -255,7 +263,14 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                         hint={editing?.hasPassword && password === null ? 'Leave empty to keep the saved password.' : undefined}
                       />
                     </div>
-                    {c.driver === 'redis' ? (
+                    {c.driver === 'dynamodb' ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input label="Region" placeholder="us-east-1" value={c.params?.region ?? ''} required={!c.host}
+                          onChange={(e) => set({ params: { ...c.params, region: e.target.value.trim() } })} />
+                        <Input label="AWS profile" placeholder="Optional" value={c.params?.profile ?? ''} hint="Used when the keys are empty, like the AWS CLI."
+                          onChange={(e) => set({ params: { ...c.params, profile: e.target.value.trim() } })} />
+                      </div>
+                    ) : c.driver === 'memcached' ? null : c.driver === 'redis' ? (
                       <Input label="Database number" inputMode="numeric" value={c.database ?? '0'} hint="Redis databases are numbered 0–15. You can switch later."
                         onChange={(e) => set({ database: e.target.value.replace(/\D/g, '') || '0' })} />
                     ) : c.driver === 'mongodb' ? (
@@ -265,7 +280,7 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                           onChange={(e) => set({ params: { ...c.params, authSource: e.target.value } })} />
                       </div>
                     ) : (
-                      <Input label="Database" placeholder={c.driver === 'mysql' ? 'Optional. Browse all databases' : 'postgres'} value={c.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
+                      <Input label="Database" placeholder={c.driver === 'postgres' ? 'postgres' : 'Optional. Browse all databases'} value={c.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
                     )}
 
                     <Collapsible title="Encryption (TLS)" badge={<Badge>{c.tls.mode ?? 'prefer'}</Badge>}>
@@ -273,7 +288,7 @@ export function ConnectionDialog({ target, onClose }: { target: ConnectionDialog
                         label="TLS mode"
                         value={c.tls.mode ?? 'prefer'}
                         onChange={(mode) => set({ tls: { ...c.tls, mode } })}
-                        options={(c.driver === 'redis'
+                        options={(noPrefer.has(c.driver)
                           ? [{ value: 'off', label: 'Off' }, { value: 'require', label: 'Require' }, { value: 'verify', label: 'Verify' }]
                           : [{ value: 'off', label: 'Off' }, { value: 'prefer', label: c.driver === 'mongodb' ? 'Auto' : 'Prefer' }, { value: 'require', label: 'Require' }, { value: 'verify', label: 'Verify' }]) as { value: TLSMode; label: string }[]}
                         className="w-full"

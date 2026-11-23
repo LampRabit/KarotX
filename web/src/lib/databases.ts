@@ -33,16 +33,20 @@ export const databases: DbKind[] = [
   { id: 'mongodb', name: 'MongoDB', detail: 'Documents · port 27017', icon: siMongodb, status: 'ready', group: 'database', driver: 'mongodb', defaults: { port: 27017, host: 'localhost', tlsMode: 'off' } },
   { id: 'atlas', name: 'MongoDB Atlas', detail: 'Hosted MongoDB', icon: siMongodb, status: 'ready', group: 'cloud', driver: 'mongodb', defaults: { srv: true, tlsMode: 'prefer', hostHint: 'cluster0.xxxxx.mongodb.net', params: { retryWrites: 'true', w: 'majority' } } },
   { id: 'upstash', name: 'Upstash Redis', detail: 'Serverless Redis', icon: siUpstash, status: 'ready', group: 'cloud', driver: 'redis', defaults: { port: 6379, user: 'default', database: '0', tlsMode: 'require', hostHint: '<name>.upstash.io' } },
-  { id: 'clickhouse', name: 'ClickHouse', detail: 'Analytics', icon: siClickhouse, status: 'soon', group: 'database' },
-  { id: 'neo4j', name: 'Neo4j', detail: 'Graph', icon: siNeo4j, status: 'soon', group: 'database' },
-  { id: 'memcached', name: 'Memcached', detail: 'Cache', status: 'soon', group: 'database' },
-  { id: 'dynamodb', name: 'DynamoDB', detail: 'AWS key-value', status: 'soon', group: 'cloud' },
+  { id: 'clickhouse', name: 'ClickHouse', detail: 'Analytics · port 9000', icon: siClickhouse, status: 'ready', group: 'database', driver: 'clickhouse', defaults: { port: 9000, user: 'default', host: 'localhost', tlsMode: 'off' } },
+  { id: 'neo4j', name: 'Neo4j', detail: 'Graph · port 7687', icon: siNeo4j, status: 'ready', group: 'database', driver: 'neo4j', defaults: { port: 7687, user: 'neo4j', host: 'localhost', tlsMode: 'off' } },
+  { id: 'memcached', name: 'Memcached', detail: 'Cache · port 11211', status: 'ready', group: 'database', driver: 'memcached', defaults: { port: 11211, host: 'localhost', tlsMode: 'off' } },
+  { id: 'clickhouse-cloud', name: 'ClickHouse Cloud', detail: 'Hosted ClickHouse', icon: siClickhouse, status: 'ready', group: 'cloud', driver: 'clickhouse', defaults: { port: 9440, user: 'default', tlsMode: 'verify', hostHint: '<id>.<region>.aws.clickhouse.cloud' } },
+  { id: 'aura', name: 'Neo4j Aura', detail: 'Hosted Neo4j', icon: siNeo4j, status: 'ready', group: 'cloud', driver: 'neo4j', defaults: { port: 7687, user: 'neo4j', tlsMode: 'verify', hostHint: '<id>.databases.neo4j.io' } },
+  { id: 'dynamodb', name: 'DynamoDB', detail: 'AWS key-value', status: 'ready', group: 'cloud', driver: 'dynamodb', defaults: { tlsMode: 'verify', hostHint: 'Leave empty for AWS', params: { region: 'us-east-1' } } },
 ]
 
 export const kindOf = (c: Pick<Connection, 'preset' | 'driver'>): DbKind =>
   databases.find((d) => d.id === c.preset) ?? databases.find((d) => d.id === c.driver)!
 
-export const dialectName: Record<DriverName, string> = { postgres: 'PostgreSQL', mysql: 'MySQL', sqlite: 'SQLite', redis: 'Redis', mongodb: 'MongoDB' }
+export const dialectName: Record<DriverName, string> = {
+  postgres: 'PostgreSQL', mysql: 'MySQL', sqlite: 'SQLite', clickhouse: 'ClickHouse', redis: 'Redis', memcached: 'Memcached', mongodb: 'MongoDB', dynamodb: 'DynamoDB', neo4j: 'Neo4j',
+}
 
 /** Parse a connection URL such as postgres://user:pass@host:5432/db?sslmode=require. */
 export function parseConnectionUrl(raw: string): { conn: Partial<Connection>; password?: string } | null {
@@ -91,18 +95,39 @@ export function parseConnectionUrl(raw: string): { conn: Partial<Connection>; pa
       return null
     }
   }
-  const m = t.match(/^(postgres(?:ql)?|mysql|mariadb):\/\//i)
+  // Neo4j: neo4j://, neo4j+s://, bolt://, bolt+ssc:// …
+  const nj = t.match(/^(neo4j|bolt)(\+s|\+ssc)?:\/\//i)
+  if (nj) {
+    try {
+      const u = new URL(t.replace(nj[0], 'http://'))
+      const tls = nj[2]?.toLowerCase()
+      return {
+        conn: {
+          driver: 'neo4j',
+          host: decodeURIComponent(u.hostname),
+          port: u.port ? Number(u.port) : undefined,
+          user: decodeURIComponent(u.username) || undefined,
+          tls: { mode: tls === '+s' ? 'verify' : tls === '+ssc' ? 'require' : 'off' },
+        },
+        password: u.password ? decodeURIComponent(u.password) : undefined,
+      }
+    } catch {
+      return null
+    }
+  }
+  const m = t.match(/^(postgres(?:ql)?|mysql|mariadb|clickhouse):\/\//i)
   if (!m) return null
   try {
     const u = new URL(raw.trim().replace(m[0], 'http://'))
     const scheme = m[1].toLowerCase()
-    const driver: DriverName = scheme.startsWith('postgres') ? 'postgres' : 'mysql'
+    const driver: DriverName = scheme.startsWith('postgres') ? 'postgres' : scheme === 'clickhouse' ? 'clickhouse' : 'mysql'
     const ssl = (u.searchParams.get('sslmode') ?? u.searchParams.get('ssl-mode') ?? '').toLowerCase()
     const tlsMode: TLSMode | undefined =
       ssl === 'disable' || ssl === 'disabled' ? 'off'
       : ssl === 'require' || ssl === 'required' ? 'require'
       : ssl.startsWith('verify') ? 'verify'
-      : ssl ? 'prefer' : undefined
+      : ssl ? 'prefer'
+      : driver === 'clickhouse' ? (u.searchParams.get('secure') === 'true' ? 'verify' : 'off') : undefined
     return {
       conn: {
         driver,

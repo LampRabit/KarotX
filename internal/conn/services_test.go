@@ -14,16 +14,17 @@ func TestParseServices(t *testing.T) {
 		{"id":"maria","type":"mariadb","host":"127.0.0.1","status":"running"},
 		{"id":"cache","type":"redis","host":"127.0.0.1","status":"stopped"},
 		{"id":"ch","type":"clickhouse","host":"127.0.0.1","status":"running"},
+		{"id":"cass","type":"cassandra","host":"127.0.0.1","status":"running"},
 		{"id":"bad/../id","type":"postgres","host":"x","status":"running"},
 		{"id":"pg","type":"postgres","host":"dup","status":"running"}
 	]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 4 {
-		t.Fatalf("want 4 entries (bad id and duplicate skipped), got %d", len(list))
+	if len(list) != 5 {
+		t.Fatalf("want 5 entries (bad id and duplicate skipped), got %d", len(list))
 	}
-	pg, maria, cache, ch := list[0], list[1], list[2], list[3]
+	pg, maria, cache, ch, cass := list[0], list[1], list[2], list[3], list[4]
 	if pg.conn.ID != "lr-pg" || pg.conn.Driver != "postgres" || pg.password != "pw" || pg.unavailable != "" || pg.source != "LampRabit" {
 		t.Errorf("postgres: %+v", pg)
 	}
@@ -33,8 +34,11 @@ func TestParseServices(t *testing.T) {
 	if cache.unavailable != "Stopped in LampRabit" || cache.conn.Database != "0" {
 		t.Errorf("stopped redis: %+v", cache)
 	}
-	if ch.unavailable != "ClickHouse support is coming soon" {
+	if ch.unavailable != "" || ch.conn.Driver != "clickhouse" {
 		t.Errorf("clickhouse: %+v", ch)
+	}
+	if cass.unavailable != "KarotX doesn't support cassandra databases" {
+		t.Errorf("unknown type: %+v", cass)
 	}
 	if l, _ := parseServices([]byte(`{"version":1,"databases":[{"id":"x","type":"redis","host":"h","status":"stopped"}]}`)); l[0].source != "Services" || l[0].unavailable != "Stopped in Services" {
 		t.Errorf("default source: %+v", l[0])

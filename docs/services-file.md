@@ -55,16 +55,15 @@ The file doesn't need to exist when KarotX starts; KarotX picks it up as soon as
 | `source` | no | Name of the tool, shown as the sidebar group and in messages ("Stopped in LampRabit"). Defaults to `Services`. |
 | `id` | yes | **Stable and unique.** Letters, digits, `_ . -`, at most 64 characters. KarotX uses it to keep open tabs attached across reloads. Never reuse an id for a different database. |
 | `name` | no | Shown in the sidebar. Defaults to the id. |
-| `type` | yes | One of `postgres`, `mysql`, `mariadb`, `sqlite`, `redis`, `mongodb`, `clickhouse`, `neo4j`, `memcached`. |
-| `host`, `port` | yes, except sqlite | Use `127.0.0.1` for local services. |
-| `user`, `password` | if the database needs them | Leave them out, or use `""`, when there's no auth. |
+| `type` | yes | One of `postgres`, `mysql`, `mariadb`, `sqlite`, `redis`, `mongodb`, `clickhouse`, `neo4j`, `memcached`, `dynamodb`. |
+| `host`, `port` | yes, except sqlite | Use `127.0.0.1` for local services. For `dynamodb` this is the DynamoDB Local endpoint. |
+| `user`, `password` | if the database needs them | Leave them out, or use `""`, when there's no auth. For `dynamodb` they are the access key ID and secret access key. |
 | `database` | no | Default database, or the database index for Redis (`"0"`). |
 | `file` | sqlite only | Absolute path to the database file. |
 | `status` | yes | `running` or `stopped`. KarotX greys out stopped databases and won't connect to them. |
 
-**List every database you offer**, including types KarotX doesn't support yet
-(`clickhouse`, `neo4j`, `memcached`). KarotX shows those as "coming soon" and enables them
-once support lands, so the file doesn't need to change.
+**List every database you offer.** Entries of a type KarotX doesn't know are shown greyed
+out with the reason, so a newer tool can list more types than this KarotX supports.
 
 ## Rules for the tool writing the file
 

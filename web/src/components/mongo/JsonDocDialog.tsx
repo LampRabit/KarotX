@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
 import { EditorView } from '@codemirror/view'
@@ -17,8 +17,13 @@ const theme = EditorView.theme({
  * Edit or insert a document as JSON. MongoDB Extended JSON is kept as typed
  * ({"$oid": …}, {"$date": …}), so ObjectIds and dates survive the round trip.
  */
-export function JsonDocDialog({ open, title, initial, saveLabel, onClose, onSave }: {
+export function JsonDocDialog({ open, title, initial, saveLabel, onClose, onSave, hint, children, canSave = true }: {
   open: boolean; title: string; initial: string; saveLabel: string; onClose: () => void; onSave: (doc: unknown) => Promise<boolean>
+  /** Replaces the MongoDB types hint under the title. */
+  hint?: string
+  /** Extra fields shown above the editor (e.g. a node's labels). */
+  children?: ReactNode
+  canSave?: boolean
 }) {
   const [text, setText] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -36,7 +41,7 @@ export function JsonDocDialog({ open, title, initial, saveLabel, onClose, onSave
   const extensions = useMemo(() => [json(), theme, EditorView.lineWrapping], [])
 
   async function save() {
-    if (error) return
+    if (error || !canSave) return
     setBusy(true)
     try {
       if (await onSave(JSON.parse(text))) onClose()
@@ -50,15 +55,16 @@ export function JsonDocDialog({ open, title, initial, saveLabel, onClose, onSave
       <div className="flex h-[min(640px,85vh)] flex-col" onKeyDown={(e) => (e.ctrlKey || e.metaKey) && e.key === 's' && (e.preventDefault(), save())}>
         <header className="border-b px-5 py-3.5 pr-14">
           <h2 className="text-[15px] font-semibold">{title}</h2>
-          <p className="text-xs text-muted-foreground">JSON with MongoDB types, e.g. {'{"$oid": "…"}'} or {'{"$date": "2024-01-02T00:00:00Z"}'}</p>
+          <p className="text-xs text-muted-foreground">{hint ?? <>JSON with MongoDB types, e.g. {'{"$oid": "…"}'} or {'{"$date": "2024-01-02T00:00:00Z"}'}</>}</p>
         </header>
+        {children && <div className="border-b px-5 py-3">{children}</div>}
         <div className="min-h-0 flex-1 overflow-hidden">
           <CodeMirror value={text} onChange={setText} extensions={extensions} theme="none" height="100%" className="h-full" autoFocus aria-label="Document JSON" />
         </div>
         <footer className="flex items-center gap-2 border-t bg-sidebar/60 px-5 py-3">
           <p role={error ? 'alert' : undefined} className={error ? 'min-w-0 flex-1 truncate text-[13px] text-destructive' : 'flex-1 text-[13px] text-success'}>{error || 'Valid JSON'}</p>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button loading={busy} disabled={!!error} onClick={save}>{saveLabel} (Ctrl S)</Button>
+          <Button loading={busy} disabled={!!error || !canSave} onClick={save}>{saveLabel} (Ctrl S)</Button>
         </footer>
       </div>
     </Dialog>

@@ -83,7 +83,7 @@ func TestLiveMongo(t *testing.T) {
 			d.DropDatabase(ctx, db)
 			defer d.DropDatabase(ctx, db)
 
-			if err := d.CreateCollection(ctx, db, "people"); err != nil {
+			if err := d.CreateCollection(ctx, db, "people", nil); err != nil {
 				t.Fatal(err)
 			}
 			n, err := d.Insert(ctx, db, "people", []json.RawMessage{

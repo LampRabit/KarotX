@@ -138,12 +138,13 @@ export function inferType(values: unknown[]): Inferred {
   return t ?? 'text'
 }
 
-const sqlTypes: Record<'postgres' | 'mysql' | 'sqlite', Record<Inferred, string>> = {
+const sqlTypes: Record<'postgres' | 'mysql' | 'sqlite' | 'clickhouse', Record<Inferred, string>> = {
   postgres: { integer: 'bigint', decimal: 'double precision', boolean: 'boolean', date: 'date', datetime: 'timestamp', json: 'jsonb', text: 'text' },
   mysql: { integer: 'bigint', decimal: 'double', boolean: 'tinyint(1)', date: 'date', datetime: 'datetime', json: 'json', text: 'text' },
   sqlite: { integer: 'INTEGER', decimal: 'REAL', boolean: 'INTEGER', date: 'TEXT', datetime: 'TEXT', json: 'TEXT', text: 'TEXT' },
+  clickhouse: { integer: 'Int64', decimal: 'Float64', boolean: 'Bool', date: 'Date', datetime: 'DateTime64(3)', json: 'String', text: 'String' },
 }
-export const sqlTypeFor = (d: DriverName, t: Inferred) => (d === 'postgres' || d === 'mysql' || d === 'sqlite' ? sqlTypes[d][t] : t)
+export const sqlTypeFor = (d: DriverName, t: Inferred) => (d === 'postgres' || d === 'mysql' || d === 'sqlite' || d === 'clickhouse' ? sqlTypes[d][t] : t)
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
 

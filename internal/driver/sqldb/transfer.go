@@ -100,6 +100,12 @@ func (c *conn) CreateTableSQL(ctx context.Context, t driver.TableRef) (string, e
 	case "sqlite":
 		err := c.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, t.Table).Scan(&ddl)
 		return ddl, err
+	case "clickhouse":
+		err := c.db.QueryRowContext(ctx, `SELECT create_table_query FROM system.tables WHERE database = ? AND name = ?`, t.Schema, t.Table).Scan(&ddl)
+		for _, q := range []string{t.Schema, c.d.quote(t.Schema)} { // unqualified, like the other dialects
+			ddl = strings.Replace(ddl, " "+q+".", " ", 1)
+		}
+		return ddl, err
 	case "mysql":
 		var name string
 		err := c.db.QueryRowContext(ctx, "SHOW CREATE TABLE "+c.qualify(t)).Scan(&name, &ddl)
@@ -154,7 +160,11 @@ func (c *conn) InsertRows(ctx context.Context, t driver.TableRef, cols []string,
 	}
 	defer tx.Rollback()
 	if clear {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+		empty := "DELETE FROM " + table
+		if c.d.name() == "clickhouse" {
+			empty = "TRUNCATE TABLE " + table
+		}
+		if _, err := tx.ExecContext(ctx, empty); err != nil {
 			return 0, err
 		}
 	}
@@ -234,9 +244,12 @@ func (c *conn) Literal(v any) string {
 		if c.d.name() == "postgres" {
 			return `'\x` + hex.EncodeToString(x) + `'::bytea`
 		}
+		if c.d.name() == "clickhouse" {
+			return "unhex('" + hex.EncodeToString(x) + "')"
+		}
 		return "X'" + hex.EncodeToString(x) + "'"
 	case string:
-		if c.d.name() == "mysql" { // backslash is an escape character in MySQL strings
+		if c.d.name() == "mysql" || c.d.name() == "clickhouse" { // backslash is an escape character in MySQL strings
 			return "'" + strings.NewReplacer(`\`, `\\`, "'", "''").Replace(x) + "'"
 		}
 	}

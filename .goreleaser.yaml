@@ -50,18 +50,20 @@ release:
   header: |
     # KarotX {{ .Version }}
 
-    KarotX is a browser-based database client distributed as a single Go binary. This is the first LampRabit release: the complete MVP for relational databases, Redis and MongoDB, plus import/export and live services-file integration.
+    KarotX is a browser-based database client distributed as a single Go binary. This release adds four databases, each through the UI first, with a console as the fallback.
 
-    ## Features
+    ## New databases
 
-    - Connect to PostgreSQL, MySQL, MariaDB, SQLite, Redis and MongoDB, with TLS and SSH tunnel support.
-    - Browse schemas, tables, Redis keys and MongoDB collections in the UI.
-    - Edit relational rows and MongoDB documents, and manage tables and schemas with previewed changes.
-    - Build SQL visually with Query Commander, or use the SQL editor and database consoles.
-    - Save connections and tabs in an encrypted workspace; keep credentials in the OS keychain.
-    - Protect the browser UI with an optional password and use read-only and production safeguards.
-    - Import and export tables, databases, Redis keys and MongoDB collections (CSV, JSON, SQL) from the UI, with progress and Stop.
-    - Run with `--services <file>` to show databases managed by another tool, such as LampRabit, automatically; the list updates live as databases are added, removed, started or stopped. `--lamprabit` is an alias.
+    - **ClickHouse** (and ClickHouse Cloud): browse databases and tables, the SQL editor, Query Commander, the table designer (MergeTree tables), import and export. The data grid is read-only because ClickHouse keys aren't unique.
+    - **Neo4j** (and Neo4j Aura): a new graph view. Open a label or relationship type from the sidebar, see nodes as a graph or a table, filter by property, create, edit and delete nodes, connect two nodes, show a node's neighbours, or run Cypher in the console.
+    - **Memcached**: the key browser, value editor with expiry, new keys, a command console (GET, SET, DEL, TTL, INCR, STATS…), export and import.
+    - **DynamoDB** (AWS or DynamoDB Local): tables as collections, item view in table or JSON, visual filters (run as a Query when the partition key is set), insert, edit and delete items, create tables with partition and sort keys, PartiQL console, import and export. Sign in with access keys or an AWS profile.
+
+    All four work with read-only and production connections and SSH tunnels, and can be listed in a services file (`--services`).
+
+    ## Fixes
+
+    - The Redis key browser could freeze the page when its tab opened before the database list loaded.
 
     ## Downloads
 

@@ -1,6 +1,8 @@
 # KarotX
 
 A fast, friendly database client that ships as a single binary. Start it from the terminal and use it in your browser.
+
+Supports PostgreSQL (and Supabase, Neon, CockroachDB), MySQL / MariaDB (and PlanetScale, TiDB), SQLite, ClickHouse, Redis, Memcached, MongoDB, DynamoDB and Neo4j.
 Part of the [LampRabit](https://github.com/LampRabit) family.
 
 > Early development. See [.ai/roadmap.md](.ai/roadmap.md) for what's planned.
@@ -48,9 +50,12 @@ KAROTX_IT_MYSQL=127.0.0.1:3306:root,127.0.0.1:3307:root \
 go test ./internal/driver/sqldb -run TestLive -v
 
 KAROTX_IT_MONGO=127.0.0.1:27017 go test ./internal/driver/mongodrv -run TestLive -v
+KAROTX_IT_MEMCACHED=127.0.0.1:11211 go test ./internal/driver/memcachedrv -v
+KAROTX_IT_DYNAMO=http://127.0.0.1:8000 go test ./internal/driver/dynamodrv -v   # DynamoDB Local
+KAROTX_IT_NEO4J=127.0.0.1:7687:password go test ./internal/driver/neo4jdrv -v
 ```
 
-These connect through a real two-hop SSH tunnel (in-process SSH servers) and check TLS where the server offers it. Passwords, if needed, go in `KAROTX_IT_PG_PASSWORD` and `KAROTX_IT_MYSQL_PASSWORD`. Redis tests use an in-process fake (miniredis), so they always run.
+These connect through a real two-hop SSH tunnel (in-process SSH servers) and check TLS where the server offers it. Passwords, if needed, go in `KAROTX_IT_PG_PASSWORD` and `KAROTX_IT_MYSQL_PASSWORD`. Redis and Memcached tests use in-process fakes, so they always run.
 
 ## Release
 

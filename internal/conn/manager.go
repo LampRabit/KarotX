@@ -16,9 +16,12 @@ import (
 	"time"
 
 	"github.com/lamprabit/karotx/internal/driver"
-	_ "github.com/lamprabit/karotx/internal/driver/mongodrv" // registers MongoDB
-	_ "github.com/lamprabit/karotx/internal/driver/redisdrv" // registers Redis
-	_ "github.com/lamprabit/karotx/internal/driver/sqldb"    // registers SQL drivers
+	_ "github.com/lamprabit/karotx/internal/driver/dynamodrv"   // registers DynamoDB
+	_ "github.com/lamprabit/karotx/internal/driver/memcachedrv" // registers Memcached
+	_ "github.com/lamprabit/karotx/internal/driver/mongodrv"    // registers MongoDB
+	_ "github.com/lamprabit/karotx/internal/driver/neo4jdrv"    // registers Neo4j
+	_ "github.com/lamprabit/karotx/internal/driver/redisdrv"    // registers Redis
+	_ "github.com/lamprabit/karotx/internal/driver/sqldb"       // registers SQL drivers
 	"github.com/lamprabit/karotx/internal/model"
 	"github.com/lamprabit/karotx/internal/secrets"
 	"github.com/lamprabit/karotx/internal/state"

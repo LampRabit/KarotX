@@ -13,7 +13,7 @@ import { Skeleton } from '../ui/Skeleton'
 import { ProductionAck, runDDL, SqlPreview } from './SchemaDialogs'
 
 const blankColumn = (d: ConnView['driver']): DesignColumn => ({
-  key: newId(), name: '', type: d === 'sqlite' ? 'TEXT' : d === 'mysql' ? 'varchar(255)' : 'text', nullable: true, default: '', primaryKey: false, autoIncrement: false,
+  key: newId(), name: '', type: d === 'sqlite' ? 'TEXT' : d === 'mysql' ? 'varchar(255)' : d === 'clickhouse' ? 'String' : 'text', nullable: true, default: '', primaryKey: false, autoIncrement: false,
 })
 
 // Every track is shrinkable (minmax(0, …)), so the rows fit the dialog without horizontal scrolling.
@@ -43,7 +43,7 @@ export function TableDesigner({ conn, schema, table, database, onClose }: { conn
 
   useEffect(() => {
     if (!table) {
-      setCols([{ key: newId(), name: 'id', type: d === 'sqlite' ? 'INTEGER' : 'bigint', nullable: false, default: '', primaryKey: true, autoIncrement: true }, blankColumn(d)])
+      setCols([{ key: newId(), name: 'id', type: d === 'sqlite' ? 'INTEGER' : d === 'clickhouse' ? 'UInt64' : 'bigint', nullable: false, default: '', primaryKey: true, autoIncrement: d !== 'clickhouse' }, blankColumn(d)])
       return
     }
     api.columns(conn.id, { database, schema, table }).then((info) => (setBefore(info), setCols(info.map(fromInfo)))).catch((e) => setError(e.message))
@@ -95,7 +95,7 @@ export function TableDesigner({ conn, schema, table, database, onClose }: { conn
 
   // Auto-increment only applies to a single-column key; existing tables can change it on SQLite (via rebuild).
   const singlePk = cols.filter((c) => c.primaryKey).length === 1
-  const autoAllowed = (c: DesignColumn) => c.primaryKey && singlePk && (!table || d === 'sqlite' || !c.orig)
+  const autoAllowed = (c: DesignColumn) => d !== 'clickhouse' && c.primaryKey && singlePk && (!table || d === 'sqlite' || !c.orig)
 
   async function apply() {
     setBusy(true)

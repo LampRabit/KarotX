@@ -145,7 +145,7 @@ export function SchemaDialogs() {
       ]
       const closes = (t: (typeof ws.tabs)[number]) => {
         if (t.connId !== conn.id) return false
-        if (t.kind === 'redis') return false
+        if (t.kind === 'redis' || t.kind === 'graph') return false
         const tdb = t.kind === 'table' ? t.table.database : t.database
         const tschema = t.kind === 'table' ? t.table.schema : t.schema
         if (pgDatabase) return tdb === target

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Check, ChevronDown, Copy, Database, Download, Eraser, Eye, FileCode2, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Table2, Trash2, Upload, Wand2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
-import { api, isSql, type ConnView, type TableInfo } from '@/lib/api'
+import { api, isDoc, isSql, type ConnView, type TableInfo } from '@/lib/api'
 import { track } from '@/lib/activity'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
@@ -49,7 +49,7 @@ export function useContainers(conn: ConnView, database?: string) {
 
 export function defaultSchema(conn: ConnView, names: string[]) {
   if (conn.driver === 'sqlite') return 'main'
-  if (conn.driver === 'mysql' && conn.database && names.includes(conn.database)) return conn.database
+  if ((conn.driver === 'mysql' || conn.driver === 'clickhouse') && conn.database && names.includes(conn.database)) return conn.database
   if (names.includes('public')) return 'public'
   return names[0]
 }
@@ -127,8 +127,10 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
 
   // "New schema" on Postgres, "New database" on MySQL; deleting follows the same naming.
   const sql = isSql(conn.driver)
-  const mongo = conn.driver === 'mongodb'
-  const item = mongo ? 'collection' : 'table'
+  const mongo = isDoc(conn.driver)
+  // DynamoDB: one region, no databases to create or drop; its collections are tables.
+  const dynamo = conn.driver === 'dynamodb'
+  const item = mongo && !dynamo ? 'collection' : 'table'
   const newContainer = () => openDialog(mongo ? { kind: 'mongo-create', connId: conn.id } : { kind: 'create-database', connId: conn.id, database })
   const dropContainer = () => openDialog(mongo ? { kind: 'mongo-drop', connId: conn.id, db: schema! } : { kind: 'drop', connId: conn.id, what: conn.driver === 'postgres' ? 'schema' : 'database', schema: schema!, database })
   const newItem = () => openDialog(mongo ? { kind: 'mongo-create', connId: conn.id, db: schema } : { kind: 'table-designer', connId: conn.id, schema: schema!, database })
@@ -172,7 +174,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                 </>
               )}
               <Picker label={label} value={schema} items={names} onPick={pick} placeholder={loadingNames ? 'Loading…' : `No ${label}s`}
-                newLabel={`New ${label}…`} onNew={conn.readOnly ? undefined : newContainer} />
+                newLabel={`New ${label}…`} onNew={conn.readOnly || dynamo ? undefined : newContainer} />
             </div>
           )}
         </div>
@@ -229,7 +231,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                   )}
                 </>
               )}
-              {conn.driver !== 'sqlite' && !conn.readOnly && (
+              {conn.driver !== 'sqlite' && !dynamo && !conn.readOnly && (
                 <>
                   <MenuItem icon={<Plus />} onSelect={newContainer}>New {label}…</MenuItem>
                   <MenuSeparator />
@@ -257,7 +259,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
             <span className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><Table2 size={22} /></span>
             <div>
               <p className="font-medium">No {item}s in {schema} yet</p>
-              <p className="text-[13px] text-muted-foreground">{mongo ? 'Create one to start adding documents.' : 'Create one with the designer, or run CREATE TABLE below.'}</p>
+              <p className="text-[13px] text-muted-foreground">{mongo ? `Create one to start adding ${dynamo ? 'items' : 'documents'}.` : 'Create one with the designer, or run CREATE TABLE below.'}</p>
             </div>
             {!conn.readOnly && <Button onClick={newItem}><Plus size={15} aria-hidden /> New {item}</Button>}
           </div>
@@ -272,7 +274,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                     content={
                       <>
                         <CtxLabel>{t.name}</CtxLabel>
-                        <CtxItem icon={<Table2 />} onSelect={() => openTable(conn.id, ref(t))} shortcut="Enter">{mongo ? 'Open collection' : 'Open data'}</CtxItem>
+                        <CtxItem icon={<Table2 />} onSelect={() => openTable(conn.id, ref(t))} shortcut="Enter">{mongo ? `Open ${item}` : 'Open data'}</CtxItem>
                         {sql && <CtxItem icon={<Wand2 />} onSelect={() => openQuery(conn.id, '', schema, database, emptyCommander(t.name))}>Build a query</CtxItem>}
                         {sql && <CtxItem icon={<FileCode2 />} onSelect={() => openQuery(conn.id, selectSql(conn.driver, schema, t.name), schema, database)}>Query in editor</CtxItem>}
                         <CtxItem icon={<Copy />} onSelect={() => navigator.clipboard.writeText(t.name).then(() => toast.success('Copied name', { duration: 1200 }))}>Copy name</CtxItem>
@@ -290,7 +292,7 @@ export function DatabaseTab({ tab, conn }: { tab: DTab; conn: ConnView }) {
                         )}
                         {!conn.readOnly && (
                           <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog(mongo ? { kind: 'mongo-drop', connId: conn.id, db: schema, collection: t.name } : { kind: 'drop', connId: conn.id, what: t.kind, schema, table: t.name, database })}>
-                            {mongo ? 'Drop collection…' : `Delete ${t.kind}…`}
+                            {mongo ? `Drop ${item}…` : `Delete ${t.kind}…`}
                           </CtxItem>
                         )}
                       </>

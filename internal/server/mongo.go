@@ -212,7 +212,7 @@ func (s *Server) mongoCommand(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !mongodrv.IsReadCommand(b.Command) && !s.writeGuard(w, r, b.Confirmed, true, "command "+mongodrv.CommandName(b.Command)) {
+	if read, label := d.ClassifyCommand(b.Command); !read && !s.writeGuard(w, r, b.Confirmed, true, label) {
 		return
 	}
 	res, err := d.RunCommand(r.Context(), b.DB, b.Command)
@@ -224,7 +224,10 @@ func (s *Server) mongoCommand(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) mongoCreateCollection(w http.ResponseWriter, r *http.Request) {
-	var b collReq
+	var b struct {
+		collReq
+		Keys []driver.KeyAttr `json:"keys"`
+	}
 	if !readJSON(w, r, &b) {
 		return
 	}
@@ -232,7 +235,7 @@ func (s *Server) mongoCreateCollection(w http.ResponseWriter, r *http.Request) {
 	if !ok || !s.writeGuard(w, r, b.Confirmed, false, "") {
 		return
 	}
-	if err := d.CreateCollection(r.Context(), b.DB, b.Collection); err != nil {
+	if err := d.CreateCollection(r.Context(), b.DB, b.Collection, b.Keys); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

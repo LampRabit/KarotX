@@ -64,6 +64,10 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
   const showSpinner = useDelayed(!!loading, 150)
   const { guard, dialog } = useGuard(conn.name)
   const ro = conn.readOnly
+  // DynamoDB: items are identified by their key attributes, there's no server-side sort, and the console runs PartiQL.
+  const dynamo = conn.driver === 'dynamodb'
+  const item = dynamo ? 'item' : 'document'
+  const an = dynamo ? 'an' : 'a'
 
   useEffect(() => {
     api.mongo.fields(conn.id, db, coll).then(setFields).catch(() => setFields([]))
@@ -105,12 +109,13 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
   }, [load, version])
 
   const docs = (data?.docs ?? []) as Doc[]
+  const idKeys = useMemo(() => data?.key ?? ['_id'], [data])
+  const idOf = (d: Doc) => (data?.key ? Object.fromEntries(data.key.map((k) => [k, d[k]])) : d._id)
   const columns = useMemo(() => {
-    const keys: string[] = []
+    const keys: string[] = idKeys.filter((k) => docs.some((d) => k in d))
     for (const d of docs) for (const k of Object.keys(d)) if (!keys.includes(k)) keys.push(k)
-    keys.sort((a, b) => (a === '_id' ? -1 : b === '_id' ? 1 : 0))
     return keys.map((k) => ({ name: k, type: fields.find((f) => f.path === k)?.type ?? '' }))
-  }, [docs, fields])
+  }, [docs, fields, idKeys])
   const rows = useMemo(() => docs.map((d) => columns.map((c) => cell(d[c.name]))), [docs, columns])
   const filterFields: Field[] = useMemo(
     () => fields.filter((f) => f.type !== 'object' && f.type !== 'array').map((f) => ({ ref: { table: coll, column: f.path }, type: filterType(f.type), label: f.path })),
@@ -121,12 +126,12 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
     try {
       if (editing?.doc) {
         // `true` distinguishes "saved" from "cancelled at the production prompt" (undefined).
-        const saved = await guard(async (confirmed) => (await track('Saving document', api.mongo.replace(conn.id, db, coll, editing.doc!._id, doc, confirmed)), true))
+        const saved = await guard(async (confirmed) => (await track('Saving document', api.mongo.replace(conn.id, db, coll, idOf(editing.doc!), doc, confirmed)), true))
         if (!saved) return false
-        toast.success('Document saved')
+        toast.success(dynamo ? 'Item saved' : 'Document saved')
       } else {
-        await track('Inserting document', api.mongo.insert(conn.id, db, coll, [doc]))
-        toast.success('Document inserted')
+        await track(`Inserting ${item}`, api.mongo.insert(conn.id, db, coll, [doc]))
+        toast.success(dynamo ? 'Item inserted' : 'Document inserted')
       }
       load()
       return true
@@ -138,8 +143,8 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
 
   async function deleteDocs(list: Doc[]) {
     try {
-      const r = await guard((confirmed) => track('Deleting documents', api.mongo.delete(conn.id, db, coll, list.map((d) => d._id), confirmed)))
-      if (r) toast.success(`Deleted ${r.deleted} ${r.deleted === 1 ? 'document' : 'documents'}`)
+      const r = await guard((confirmed) => track('Deleting documents', api.mongo.delete(conn.id, db, coll, list.map(idOf), confirmed)))
+      if (r) toast.success(`Deleted ${r.deleted} ${item}${r.deleted === 1 ? '' : 's'}`)
       load()
     } catch (e) {
       toast.error("Couldn't delete", { description: (e as Error).message })
@@ -174,12 +179,12 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
             {rawMode ? (
               <form onSubmit={(e) => (e.preventDefault(), setSkip(0), setRawApplied(raw))} className="flex h-8 min-w-0 flex-1 items-center rounded-lg border bg-background focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15">
                 <span className="flex h-full items-center rounded-l-lg border-r bg-muted/60 px-2.5 font-mono text-[11px] font-semibold text-muted-foreground">FILTER</span>
-                <input value={raw} onChange={(e) => setRaw(e.target.value)} spellCheck={false} aria-label="Filter as MongoDB query JSON" placeholder='{ "age": { "$gte": 30 } }'
+                <input value={raw} onChange={(e) => setRaw(e.target.value)} spellCheck={false} aria-label={dynamo ? 'Filter as JSON' : 'Filter as MongoDB query JSON'} placeholder='{ "age": { "$gte": 30 } }'
                   className="h-full min-w-0 flex-1 bg-transparent px-2.5 font-mono text-[12.5px] outline-none" />
                 <button type="submit" className={cn('mr-1 h-6 rounded-md px-2 text-xs font-medium', raw !== rawApplied ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>Apply</button>
               </form>
             ) : (
-              <FilterBar fields={filterFields} filters={filters} match={match} onChange={(f, m) => (setFilters(f), setMatch(m), setSkip(0))} dense addLabel="Filter documents" />
+              <FilterBar fields={filterFields} filters={filters} match={match} onChange={(f, m) => (setFilters(f), setMatch(m), setSkip(0))} dense addLabel={`Filter ${item}s`} />
             )}
             <Tooltip content={rawMode ? 'Back to the visual filter' : 'Write the filter as JSON instead'}>
               <button type="button" aria-label={rawMode ? 'Switch to visual filter' : 'Switch to JSON filter'}
@@ -198,9 +203,9 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
           )}
           {!ro && (
             <>
-              <Tooltip content="Insert a document"><Button size="sm" variant="ghost" aria-label="Insert document" onClick={() => setEditing({})}><Plus size={14} aria-hidden /><span className="hidden xl:inline">Insert</span></Button></Tooltip>
-              <Tooltip content="Delete selected documents (Del)">
-                <Button size="sm" variant="ghost" aria-label="Delete selected documents" disabled={!selected.size} onClick={() => setConfirmDelete([...selected].map((i) => docs[i]))}>
+              <Tooltip content={`Insert ${an} ${item}`}><Button size="sm" variant="ghost" aria-label={`Insert ${item}`} onClick={() => setEditing({})}><Plus size={14} aria-hidden /><span className="hidden xl:inline">Insert</span></Button></Tooltip>
+              <Tooltip content={`Delete selected ${item}s (Del)`}>
+                <Button size="sm" variant="ghost" aria-label={`Delete selected ${item}s`} disabled={!selected.size} onClick={() => setConfirmDelete([...selected].map((i) => docs[i]))}>
                   <Trash2 size={14} aria-hidden />{selected.size > 0 && <span>{selected.size}</span>}
                 </Button>
               </Tooltip>
@@ -217,7 +222,7 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
               {!ro && (
                 <>
                   <MenuSeparator />
-                  <MenuItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db, collection: coll })}>Drop collection…</MenuItem>
+                  <MenuItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db, collection: coll })}>Drop {dynamo ? 'table' : 'collection'}…</MenuItem>
                 </>
               )}
             </MenuContent>
@@ -231,22 +236,22 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
         ) : error ? (
           <ErrorPanel message={error} />
         ) : !data ? (
-          <div className="space-y-px" role="status" aria-label="Loading documents">
+          <div className="space-y-px" role="status" aria-label={`Loading ${item}s`}>
             <Skeleton className="h-11 rounded-none" />
             {[...Array(12)].map((_, i) => <Skeleton key={i} className="h-7.5 rounded-none opacity-70" />)}
           </div>
         ) : docs.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-            <p className="font-medium text-foreground">No documents</p>
-            <p className="text-[13px]">{filterKey !== '{}' ? 'Nothing matches this filter.' : 'This collection is empty.'}</p>
-            {!ro && filterKey === '{}' && <Button size="sm" variant="secondary" onClick={() => setEditing({})}><Plus size={13} aria-hidden /> Insert a document</Button>}
+            <p className="font-medium text-foreground">No {item}s</p>
+            <p className="text-[13px]">{filterKey !== '{}' ? 'Nothing matches this filter.' : `This ${dynamo ? 'table' : 'collection'} is empty.`}</p>
+            {!ro && filterKey === '{}' && <Button size="sm" variant="secondary" onClick={() => setEditing({})}><Plus size={13} aria-hidden /> Insert {an} {item}</Button>}
           </div>
         ) : view === 'table' ? (
           <div className={cn('h-full transition-opacity', loading && 'opacity-60')} onDoubleClick={(e) => {
             const r = (e.target as HTMLElement).closest<HTMLElement>('[data-r]')
             if (r && !ro) setEditing({ doc: docs[Number(r.dataset.r)] })
           }}>
-            <DataGrid columns={columns} rows={rows} primaryKey={['_id']} sort={sort} onSort={(c) => { setSkip(0); setSort((s) => (s?.column !== c ? { column: c, desc: false } : !s.desc ? { column: c, desc: true } : undefined)) }}
+            <DataGrid columns={columns} rows={rows} primaryKey={idKeys} sort={sort} onSort={dynamo ? undefined : (c) => { setSkip(0); setSort((s) => (s?.column !== c ? { column: c, desc: false } : !s.desc ? { column: c, desc: true } : undefined)) }}
               selected={selected} onSelect={setSelected} rowOffset={skip} onFilterBy={filterBy}
               onDeleteRows={ro ? undefined : (list) => setConfirmDelete(list.map((i) => docs[i]))} />
           </div>
@@ -256,7 +261,7 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
               {docs.map((d, i) => (
                 <li key={i} className="group rounded-xl border bg-surface">
                   <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
-                    <span className="font-mono">{String(cell(d._id))}</span>
+                    <span className="font-mono">{data?.key ? data.key.map((k) => String(cell(d[k]))).join(' · ') : String(cell(d._id))}</span>
                     {!ro && (
                       <span className="ml-auto flex opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
                         <Button size="sm" variant="ghost" onClick={() => setEditing({ doc: d })}><Pencil size={12} aria-hidden /> Edit</Button>
@@ -276,20 +281,20 @@ export function CollectionTab({ tab, conn }: { tab: TTab; conn: ConnView }) {
         <footer className="flex h-10 shrink-0 items-center gap-3 border-t bg-sidebar px-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
             <button disabled={skip === 0 || !!loading} onClick={() => setSkip((s) => Math.max(0, s - PAGE))} aria-label="Previous page" className="flex size-7 items-center justify-center rounded-md hover:bg-muted disabled:opacity-40"><ChevronLeft size={15} /></button>
-            <span className="tabular-nums">{docs.length ? `${(skip + 1).toLocaleString()}–${shownTo.toLocaleString()} of ${data?.estimated ? '~' : ''}${total.toLocaleString()}` : 'No documents'}</span>
+            <span className="tabular-nums">{docs.length ? `${(skip + 1).toLocaleString()}–${shownTo.toLocaleString()} of ${data?.estimated ? '~' : ''}${total.toLocaleString()}` : `No ${item}s`}</span>
             <button disabled={shownTo >= total || !!loading} onClick={() => setSkip((s) => s + PAGE)} aria-label="Next page" className="flex size-7 items-center justify-center rounded-md hover:bg-muted disabled:opacity-40"><ChevronRight size={15} /></button>
           </div>
           {data && <span>{data.durationMs.toFixed(1)} ms</span>}
-          {!ro && <span className="hidden lg:inline">Double-click a document to edit · right-click for more</span>}
+          {!ro && <span className="hidden lg:inline">Double-click {an} {item} to edit · right-click for more</span>}
         </footer>
       )}
 
       <MongoConsole conn={conn} db={db} coll={coll} guard={guard} onResult={(title, docs) => setConsoleOut({ title, docs })} />
 
-      <JsonDocDialog open={!!editing} title={editing?.doc ? 'Edit document' : `Insert into ${coll}`} saveLabel={editing?.doc ? 'Save' : 'Insert'}
-        initial={editing?.doc ? pretty(editing.doc) : '{\n  \n}'} onClose={() => setEditing(null)} onSave={saveDoc} />
+      <JsonDocDialog open={!!editing} title={editing?.doc ? `Edit ${item}` : `Insert into ${coll}`} saveLabel={editing?.doc ? 'Save' : 'Insert'}
+        initial={editing?.doc ? pretty(editing.doc) : data?.key ? pretty(Object.fromEntries(data.key.map((k) => [k, '']))) : '{\n  \n}'} onClose={() => setEditing(null)} onSave={saveDoc} />
       <Confirm open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(undefined)} danger confirmLabel="Delete"
-        title={`Delete ${confirmDelete?.length} ${confirmDelete?.length === 1 ? 'document' : 'documents'}?`} onConfirm={() => deleteDocs(confirmDelete!)}>
+        title={`Delete ${confirmDelete?.length} ${item}${confirmDelete?.length === 1 ? '' : 's'}?`} onConfirm={() => deleteDocs(confirmDelete!)}>
         They are removed permanently from {coll}.
       </Confirm>
       {dialog}
@@ -321,9 +326,23 @@ function MongoConsole({ conn, db, coll, guard, onResult }: {
 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const dynamo = conn.driver === 'dynamodb'
   async function run() {
     const t = text.trim()
     if (!t || busy) return
+    if (dynamo) {
+      setBusy(true)
+      try {
+        const r = await guard((confirmed) => track('Running PartiQL', api.mongo.command(conn.id, db, { statement: t }, confirmed)))
+        const items = (r?.result ?? []) as unknown[]
+        if (r) onResult(`PartiQL · ${items.length} ${items.length === 1 ? 'item' : 'items'}`, items)
+      } catch (e) {
+        toast.error('It didn’t run', { description: (e as Error).message })
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     let parsed: unknown
     try {
       parsed = JSON.parse(t)
@@ -348,8 +367,8 @@ function MongoConsole({ conn, db, coll, guard, onResult }: {
   return (
     <form onSubmit={(e) => (e.preventDefault(), run())} className="flex shrink-0 items-center gap-2 border-t bg-sidebar/50 px-3 py-2">
       <Terminal size={15} className="shrink-0 text-muted-foreground" aria-hidden />
-      <input value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label="Aggregation pipeline or command"
-        placeholder={'Pipeline [ { "$group": { "_id": "$status", "n": { "$sum": 1 } } } ]  or command { "dbStats": 1 }'}
+      <input value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label={dynamo ? 'PartiQL statement' : 'Aggregation pipeline or command'}
+        placeholder={dynamo ? `PartiQL: SELECT * FROM "${coll}" WHERE …` : 'Pipeline [ { "$group": { "_id": "$status", "n": { "$sum": 1 } } } ]  or command { "dbStats": 1 }'}
         className="h-8 min-w-0 flex-1 rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20" />
       <Button size="sm" type="submit" loading={busy} disabled={!text.trim()}>Run</Button>
     </form>

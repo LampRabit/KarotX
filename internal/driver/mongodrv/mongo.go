@@ -430,7 +430,11 @@ func (m *conn) RunCommand(ctx context.Context, db string, cmd json.RawMessage) (
 	return ext(raw), nil
 }
 
-func (m *conn) CreateCollection(ctx context.Context, db, coll string) error {
+func (m *conn) ClassifyCommand(cmd json.RawMessage) (bool, string) {
+	return IsReadCommand(cmd), "command " + CommandName(cmd)
+}
+
+func (m *conn) CreateCollection(ctx context.Context, db, coll string, _ []driver.KeyAttr) error {
 	return m.client.Database(db).CreateCollection(ctx, coll)
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Check, DatabaseZap, FileCode2, FileUp, Upload } from 'lucide-react'
 import { motion } from 'motion/react'
 import { toast } from 'sonner'
-import { api, isSql, type ColumnInfo, type ConnView, type TableInfo, type TreeNode } from '@/lib/api'
+import { api, isDoc, isSql, type ColumnInfo, type ConnView, type TableInfo, type TreeNode } from '@/lib/api'
 import { track } from '@/lib/activity'
 import { createTable, typeSuggestions } from '@/lib/ddl'
 import { runScript, type ScriptProgress, type TransferTarget } from '@/lib/exporter'
@@ -161,7 +161,7 @@ function DropZone({ accept, hint, reading, onFile }: { accept: string; hint: str
 
 /** Picks a table or collection on any connection to copy from. */
 function SourcePicker({ onPick, onBack }: { onPick: (s: RowSource) => void; onBack: () => void }) {
-  const connections = useWorkspace((s) => s.connections).filter((c) => c.driver !== 'redis')
+  const connections = useWorkspace((s) => s.connections).filter((c) => isSql(c.driver) || isDoc(c.driver))
   const [srcId, setSrcId] = useState<string>()
   const src = connections.find((c) => c.id === srcId)
   const [roots, setRoots] = useState<TreeNode[]>()

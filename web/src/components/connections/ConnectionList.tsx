@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
-  ChevronRight, Columns3, Copy, Database, Download, Eraser, Eye, FileCode2, Folder, KeyRound, LayoutGrid, MoreHorizontal,
+  ArrowRight, ChevronRight, CircleDot, Columns3, Copy, Database, Download, Eraser, Eye, FileCode2, Folder, KeyRound, LayoutGrid, MoreHorizontal,
   Pencil, Plug, Plus, RefreshCw, Table2, Trash2, Unplug, Upload, Wand2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
-import { isSql, type ConnView, type TreeNode } from '@/lib/api'
+import { isDoc, isKv, isSql, type ConnView, type TreeNode } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { kindOf } from '@/lib/databases'
 import { selectSql } from '@/lib/ddl'
@@ -34,7 +34,7 @@ function StatusDot({ c }: { c: ConnView }) {
 }
 
 const nodeIcon = (n: TreeNode) =>
-  n.kind === 'table' ? Table2 : n.kind === 'view' ? Eye : n.kind === 'column' ? (n.primaryKey ? KeyRound : Columns3) : n.kind === 'database' ? Database : Folder
+  n.kind === 'label' ? CircleDot : n.kind === 'reltype' ? ArrowRight : n.kind === 'table' ? Table2 : n.kind === 'view' ? Eye : n.kind === 'column' ? (n.primaryKey ? KeyRound : Columns3) : n.kind === 'database' ? Database : Folder
 
 /**
  * Keyboard navigation for the whole tree: ↑/↓ move between visible rows,
@@ -113,19 +113,40 @@ function transferItems(target: TransferTarget, readOnly?: boolean, Item: typeof 
 
 function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorkspace.getState>): ReactNode {
   const ro = conn.readOnly
-  if ((node.kind === 'table' || node.kind === 'view') && conn.driver === 'mongodb') {
+  if (node.kind === 'label' || node.kind === 'reltype') {
+    const scope = node.kind === 'label' ? { label: node.name } : { rel: node.name }
+    return (
+      <>
+        <CtxLabel>{node.name}</CtxLabel>
+        <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openGraph(conn.id, node.path[0], scope)}>{node.kind === 'label' ? 'Open nodes' : 'Open relationships'}</CtxItem>
+        <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+      </>
+    )
+  }
+  if (conn.driver === 'neo4j' && node.kind === 'database') {
+    return (
+      <>
+        <CtxLabel>{node.name}</CtxLabel>
+        <CtxItem icon={<LayoutGrid />} shortcut="Enter" onSelect={() => ws.openGraph(conn.id, node.name)}>Open graph</CtxItem>
+        <CtxItem icon={<RefreshCw />} onSelect={() => ws.loadTree(conn.id, node.path, true)}>Refresh</CtxItem>
+        <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
+      </>
+    )
+  }
+  if ((node.kind === 'table' || node.kind === 'view') && isDoc(conn.driver)) {
+    const word = conn.driver === 'dynamodb' ? 'table' : 'collection'
     const ref = tableRefOf(node)
     return (
       <>
         <CtxLabel>{node.name}</CtxLabel>
-        <CtxItem icon={<Table2 />} shortcut="Enter" onSelect={() => ws.openTable(conn.id, ref)}>Open collection</CtxItem>
+        <CtxItem icon={<Table2 />} shortcut="Enter" onSelect={() => ws.openTable(conn.id, ref)}>Open {word}</CtxItem>
         <CtxItem icon={<Copy />} onSelect={() => copy(node.name)}>Copy name</CtxItem>
         <CtxSeparator />
         {transferItems({ kind: 'collection', connId: conn.id, db: ref.schema, collection: node.name }, ro)}
         {!ro && (
           <>
             <CtxSeparator />
-            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db: ref.schema, collection: node.name })}>Drop collection…</CtxItem>
+            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db: ref.schema, collection: node.name })}>Drop {word}…</CtxItem>
           </>
         )}
       </>
@@ -174,7 +195,7 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
       </>
     )
   }
-  if (conn.driver === 'redis') {
+  if (isKv(conn.driver)) {
     return (
       <>
         <CtxLabel>{node.name}</CtxLabel>
@@ -185,7 +206,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
       </>
     )
   }
-  if (conn.driver === 'mongodb' && node.kind === 'database') {
+  if (isDoc(conn.driver) && node.kind === 'database') {
+    const dynamo = conn.driver === 'dynamodb'
     return (
       <>
         <CtxLabel>{node.name}</CtxLabel>
@@ -197,8 +219,8 @@ function nodeMenu(conn: ConnView, node: TreeNode, ws: ReturnType<typeof useWorks
         {!ro && (
           <>
             <CtxSeparator />
-            <CtxItem icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id, db: node.name })}>New collection…</CtxItem>
-            <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db: node.name })}>Drop database…</CtxItem>
+            <CtxItem icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id, db: node.name })}>New {dynamo ? 'table' : 'collection'}…</CtxItem>
+            {!dynamo && <CtxItem icon={<Trash2 />} danger onSelect={() => openDialog({ kind: 'mongo-drop', connId: conn.id, db: node.name })}>Drop database…</CtxItem>}
           </>
         )}
       </>
@@ -240,11 +262,13 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
   const ws = useWorkspace()
   const Icon = nodeIcon(node)
   const isTable = node.kind === 'table' || node.kind === 'view'
+  const graphScope = node.kind === 'label' ? { label: node.name } : node.kind === 'reltype' ? { rel: node.name } : undefined
   const serverDb = isServerDatabase(conn, node)
   const isContainer = node.kind === 'schema' || node.kind === 'database'
   // Opens the database view for this node (a tab, or the one already open).
   const openView = () => {
-    if (conn.driver === 'redis') return ws.openDatabase(conn.id, node.path[0])
+    if (isKv(conn.driver)) return ws.openDatabase(conn.id, node.path[0])
+    if (conn.driver === 'neo4j') return ws.openGraph(conn.id, node.name)
     if (serverDb) return ws.openDatabase(conn.id, undefined, node.name)
     const { schema, database } = containerOf(node)
     ws.openDatabase(conn.id, schema, database)
@@ -268,7 +292,7 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
             data-depth={depth}
             role="treeitem"
             aria-expanded={node.hasChildren ? open : undefined}
-            onClick={() => (isTable ? ws.openTable(conn.id, tableRefOf(node)) : conn.driver === 'redis' ? openView() : toggle())}
+            onClick={() => (isTable ? ws.openTable(conn.id, tableRefOf(node)) : graphScope ? ws.openGraph(conn.id, node.path[0], graphScope) : isKv(conn.driver) ? openView() : toggle())}
             onDoubleClick={() => {
               if (!isContainer) return
               ws.toggle(key, true) // the two single clicks toggled it; keep it open
@@ -282,7 +306,7 @@ function TreeRow({ conn, node, depth }: { conn: ConnView; node: TreeNode; depth:
             }}
             className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded text-left text-[13px]"
           >
-            <Icon size={14} aria-hidden className={cn('shrink-0', node.primaryKey ? 'text-warning' : isTable ? 'text-primary' : serverDb ? 'text-accent-foreground' : 'text-muted-foreground')} />
+            <Icon size={14} aria-hidden className={cn('shrink-0', node.primaryKey ? 'text-warning' : isTable || graphScope ? 'text-primary' : serverDb ? 'text-accent-foreground' : 'text-muted-foreground')} />
             <span className="truncate">{node.name}</span>
             {node.detail && <span className="ml-auto truncate pl-2 font-mono text-[11px] text-muted-foreground">{node.detail}</span>}
           </button>
@@ -326,6 +350,9 @@ function ConnectionActions({ conn, onEdit, onDelete, Item, Sep }: {
       )}
       {conn.driver === 'mongodb' && !conn.readOnly && (
         <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id })}>New database…</Item>
+      )}
+      {conn.driver === 'dynamodb' && !conn.readOnly && (
+        <Item icon={<Plus />} onSelect={() => openDialog({ kind: 'mongo-create', connId: conn.id, db: conn.params?.region || 'local' })}>New table…</Item>
       )}
       {conn.driver === 'sqlite' && transferItems({ kind: 'database', connId: conn.id, schema: 'main' }, conn.readOnly, Item)}
       {!conn.managed && <Item icon={<Pencil />} onSelect={() => onEdit(conn)}>Edit connection…</Item>}
@@ -374,7 +401,7 @@ function ConnectionItem({ conn, onEdit }: { conn: ConnView; onEdit: (c: ConnView
             <BrandIcon db={kindOf(conn)} size={22} className={cn('rounded-md', conn.unavailable && 'opacity-50 grayscale')} />
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
               <span className="truncate text-[13px] font-medium">{conn.name}</span>
-              {conn.unavailable && <span className="shrink-0 truncate text-[11px] text-muted-foreground">{conn.unavailable.includes('coming soon') ? 'Soon' : 'Stopped'}</span>}
+              {conn.unavailable && <span className="shrink-0 truncate text-[11px] text-muted-foreground">{conn.unavailable.startsWith('Stopped') ? 'Stopped' : 'Unavailable'}</span>}
               {conn.production && <span className="shrink-0 rounded bg-destructive/10 px-1 text-[10px] font-semibold tracking-wide text-destructive">PROD</span>}
             </span>
           </button>

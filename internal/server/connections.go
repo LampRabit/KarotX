@@ -37,6 +37,7 @@ func (s *Server) routeConnections(api *http.ServeMux) {
 	api.HandleFunc("PUT /api/workspace", a(s.saveWorkspace))
 	s.routeRedis(api)
 	s.routeMongo(api)
+	s.routeGraph(api)
 	s.routeTransfer(api)
 }
 

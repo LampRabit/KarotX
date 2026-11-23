@@ -11,7 +11,7 @@ import (
 type Connection struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Driver   string `json:"driver"`           // postgres | mysql | sqlite | redis | mongodb
+	Driver   string `json:"driver"`           // postgres | mysql | sqlite | redis | mongodb | clickhouse | neo4j | memcached | dynamodb
 	Preset   string `json:"preset,omitempty"` // supabase, neon, mariadb, ... (UI hint)
 	Color    string `json:"color,omitempty"`
 	Host     string `json:"host,omitempty"`
@@ -74,9 +74,13 @@ func (c *Connection) Validate() error {
 		if c.File == "" {
 			return errors.New("choose a database file")
 		}
-	case "postgres", "mysql", "redis", "mongodb":
+	case "postgres", "mysql", "redis", "mongodb", "clickhouse", "neo4j", "memcached":
 		if c.Host == "" {
 			return errors.New("enter a host")
+		}
+	case "dynamodb":
+		if c.Params["region"] == "" && c.Host == "" {
+			return errors.New("choose an AWS region")
 		}
 	default:
 		return errors.New("unsupported database type " + c.Driver)

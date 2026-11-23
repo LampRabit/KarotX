@@ -53,9 +53,8 @@ var serviceID = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 var driverFor = map[string]string{
 	"postgres": "postgres", "mysql": "mysql", "mariadb": "mysql",
 	"sqlite": "sqlite", "redis": "redis", "mongodb": "mongodb",
+	"clickhouse": "clickhouse", "neo4j": "neo4j", "memcached": "memcached", "dynamodb": "dynamodb",
 }
-
-var typeName = map[string]string{"clickhouse": "ClickHouse", "neo4j": "Neo4j", "memcached": "Memcached"}
 
 func parseServices(data []byte) ([]managed, error) {
 	var s services
@@ -92,12 +91,8 @@ func parseServices(data []byte) ([]managed, error) {
 		m := managed{source: src, conn: c, password: d.Password}
 		switch {
 		case c.Driver == "":
-			name := typeName[d.Type]
-			if name == "" {
-				name = d.Type
-			}
 			m.conn.Driver = d.Type
-			m.unavailable = name + " support is coming soon"
+			m.unavailable = "KarotX doesn't support " + d.Type + " databases"
 		case d.Status != "running":
 			m.unavailable = "Stopped in " + src
 		default:
